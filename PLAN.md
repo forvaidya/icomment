@@ -20,32 +20,32 @@
 
 ## Manual Infrastructure Setup
 
-**Create the following resources manually in Cloudflare dashboard and externalize in config:**
+**Single Cloudflare Pages Project with integrated Pages Functions**
 
-### Cloudflare Pages Project
+This approach uses ONE Pages project that serves both static assets AND API endpoints via Pages Functions.
+
+### Create These Resources
+
+#### 1. Cloudflare Pages Project
 - **Project Name:** `guru-comments`
 - **Git Integration:** None (manual deployments via CLI)
 - **Default Domain:** `guru-comments.pages.dev` (auto-assigned)
-- **Custom Domain:** `comments.devops-ranch.in` (add in Pages project settings)
+- **Custom Domain:** `comments.devops-ranch.in` (optional - add in Pages project settings)
 
-### Cloudflare Worker
-- **Worker Name:** `guru-api`
-- **Custom Domain:** `api.devops-ranch.in` (add via Workers custom domains)
-
-### D1 Database
+#### 2. D1 Database
 - **Database Name:** `icomment`
-- **Save Database ID for wrangler.toml**
+- **Note:** Save Database ID for wrangler.toml
 
-### KV Namespace
+#### 3. KV Namespace
 - **Namespace Name:** `icomment-kv`
-- **Save Namespace ID for wrangler.toml**
+- **Note:** Save Namespace ID for wrangler.toml
 
-### R2 Bucket
+#### 4. R2 Bucket
 - **Bucket Name:** `icomment-attachments`
-- **Save Bucket Name for wrangler.toml**
 
-### Update wrangler.toml (Pages Config)
-After creating Pages project, update `wrangler.toml` with:
+### wrangler.toml Configuration
+Single `wrangler.toml` for Pages + Functions:
+
 ```toml
 name = "guru-comments"
 compatibility_date = "2025-01-16"
@@ -65,50 +65,58 @@ binding = "R2"
 bucket_name = "icomment-attachments"
 ```
 
-### Create wrangler.api.toml (Worker Config)
-For the separate API Worker, create `wrangler.api.toml`:
-```toml
-name = "guru-api"
-type = "javascript"
-compatibility_date = "2025-01-16"
-main = "src/index.ts"
+### Project Structure
+```
+guru-comments/
+├── dist/                    ← Built React SPA (static assets)
+│   ├── index.html
+│   ├── main.js
+│   ├── main.css
+│   └── assets/
+│
+├── functions/               ← Pages Functions (API endpoints)
+│   ├── api/
+│   │   ├── health.ts
+│   │   ├── discussions.ts
+│   │   ├── comments.ts
+│   │   └── attachments.ts
+│   └── _middleware.ts       ← Auth middleware
+│
+└── wrangler.toml           ← Unified config
+```
 
-[[d1_databases]]
-binding = "DB"
-database_name = "icomment"
-database_id = "<YOUR_DATABASE_ID>"
+### How It Works
 
-[[kv_namespaces]]
-binding = "KV"
-id = "<YOUR_KV_NAMESPACE_ID>"
+**Request flow:**
+```
+User Request → Cloudflare Pages
+              ├─ /api/* → Routes to functions/api/* → Pages Function (Worker)
+              └─ /* → Serves dist/ static files
+```
 
-[[r2_buckets]]
-binding = "R2"
-bucket_name = "icomment-attachments"
-
-[env.production]
-routes = [
-  { pattern = "api.devops-ranch.in", zone_name = "devops-ranch.in" }
-]
+**Deployment:**
+```bash
+bun run build              # Compile React → dist/
+wrangler pages deploy dist # Deploy to Pages (includes functions/)
 ```
 
 ### Save Infrastructure IDs
-Create `.env.local` (git-ignored) with:
+Create `.env.local` (git-ignored):
 ```
 CLOUDFLARE_D1_ID=<YOUR_DATABASE_ID>
 CLOUDFLARE_KV_ID=<YOUR_KV_NAMESPACE_ID>
 CLOUDFLARE_R2_BUCKET=icomment-attachments
 CLOUDFLARE_PAGES_PROJECT=guru-comments
 CLOUDFLARE_PAGES_DOMAIN=comments.devops-ranch.in
-CLOUDFLARE_WORKER_DOMAIN=api.devops-ranch.in
 ```
 
-### Architecture Summary
-```
-Frontend:  comments.devops-ranch.in  → Cloudflare Pages (React SPA)
-API:       api.devops-ranch.in       → Cloudflare Worker (Backend)
-Storage:   D1 + KV + R2              → Shared resources
-```
+### Advantages of Single Project
+- ✅ Simpler setup (1 Pages project vs 2 separate services)
+- ✅ Shared D1/KV/R2 resources automatically bound
+- ✅ Both frontend and API on same domain (no CORS needed)
+- ✅ Easier deployments (single `wrangler pages deploy`)
+- ✅ Same free tier quotas apply to combined API calls
+- ❌ Both UI and API on same domain (optional custom domain)
 
 ---
 
