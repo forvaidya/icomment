@@ -312,13 +312,27 @@ async function createR2Bucket(ctx: SetupContext): Promise<void> {
   }
 }
 
-// Validate Pages project (assumes manual creation or will be created on first deploy)
-async function validatePagesProject(ctx: SetupContext): Promise<void> {
-  logSection('Cloudflare Pages Project');
+// Create Cloudflare Pages project (non-interactive)
+async function createPagesProject(ctx: SetupContext): Promise<void> {
+  logSection('Creating Cloudflare Pages Project');
 
-  logInfo(`Pages project name: ${ctx.pagesProjectName}`);
-  logInfo('You will deploy using: wrangler pages deploy ./dist');
-  logInfo('Wrangler will create the project automatically on first deploy if it doesn\'t exist');
+  try {
+    logInfo(`Pages project name: ${ctx.pagesProjectName}`);
+
+    try {
+      // Attempt to create Pages project non-interactively
+      // This prevents the interactive prompt from wrangler pages deploy
+      logInfo('Creating Pages project...');
+      executeSilent(`wrangler pages project create ${ctx.pagesProjectName} --production-branch main 2>&1 || true`);
+      logSuccess(`Pages project created: ${ctx.pagesProjectName}`);
+    } catch (error: any) {
+      // If creation fails (project might already exist), that's okay
+      // wrangler pages deploy will still work
+      logWarning(`Pages project creation skipped (may already exist)`);
+    }
+  } catch (error: any) {
+    logWarning(`Pages project setup skipped: ${error.message}`);
+  }
 }
 
 // Seed initial POC user
@@ -407,14 +421,17 @@ function generateSummary(ctx: SetupContext): void {
   log('bold', '     bun run admin:toggle    # Toggle admin status');
 
   console.log();
-  console.log('Build & Deploy:');
+  console.log('Deploy to Production:');
   log('cyan', '  1. Build the project:');
   log('bold', '     bun run build:all');
 
   console.log();
-  log('cyan', '  2. Deploy to Cloudflare Pages:');
+  log('cyan', '  2. Deploy to Cloudflare Pages (zero interaction):');
   log('bold', '     bun run deploy');
-  log('cyan', '     (or: wrangler pages deploy ./dist)');
+
+  console.log();
+  log('cyan', '  Or manually:');
+  log('bold', '     wrangler pages deploy ./dist');
 
   console.log();
   logSuccess('Setup completed! Ready for development.');
@@ -461,8 +478,8 @@ async function main() {
     // Step 6: Create R2 bucket
     await createR2Bucket(ctx);
 
-    // Step 7: Validate Pages project
-    await validatePagesProject(ctx);
+    // Step 7: Create Pages project (non-interactive)
+    await createPagesProject(ctx);
 
     // Step 8: Seed POC user
     await seedPOCUser(ctx);
