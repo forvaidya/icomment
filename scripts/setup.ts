@@ -312,53 +312,13 @@ async function createR2Bucket(ctx: SetupContext): Promise<void> {
   }
 }
 
-// Create Cloudflare Pages project
-async function createPagesProject(ctx: SetupContext): Promise<void> {
-  logSection('Setting Up Cloudflare Pages Project');
+// Validate Pages project (assumes manual creation or will be created on first deploy)
+async function validatePagesProject(ctx: SetupContext): Promise<void> {
+  logSection('Cloudflare Pages Project');
 
-  try {
-    logInfo(`Creating Pages project: ${ctx.pagesProjectName}`);
-    logInfo('This requires manual configuration in Cloudflare dashboard or via wrangler CLI');
-
-    try {
-      // Check if Pages project already exists
-      const projectList = executeSilent('wrangler pages project list 2>&1 || true');
-      if (projectList.includes(ctx.pagesProjectName)) {
-        logWarning(`Pages project "${ctx.pagesProjectName}" already exists`);
-        return;
-      }
-
-      // Create Pages project using wrangler
-      // Note: wrangler pages create requires git to be initialized
-      logInfo('Checking if git repository is initialized...');
-      if (!existsSync(path.join(ctx.projectRoot, '.git'))) {
-        logWarning('Git repository not initialized. Initializing now...');
-        execute('git init', false);
-        logSuccess('Git repository initialized');
-      }
-
-      logInfo('Creating Pages project with Wrangler...');
-      executeSilent(`wrangler pages project create ${ctx.pagesProjectName} --production-branch main 2>&1 || true`);
-      logSuccess(`Pages project created: ${ctx.pagesProjectName}`);
-
-      logInfo(`Next steps to complete Pages setup:`);
-      logInfo('1. Push your code to GitHub (or connect your repository)');
-      logInfo('2. In Cloudflare dashboard, connect Pages project to your GitHub repo');
-      logInfo('3. Configure build settings:');
-      logInfo('   - Build command: bun run build:all');
-      logInfo('   - Build output directory: dist');
-      logInfo('4. Bind resources in Pages project settings:');
-      logInfo(`   - Database: ${ctx.databaseName} (${ctx.databaseId})`);
-      logInfo(`   - KV Namespace: ${ctx.kvNamespace} (${ctx.kvId})`);
-      logInfo(`   - R2 Bucket: ${ctx.r2Bucket}`);
-
-    } catch (error: any) {
-      logWarning(`Pages project creation skipped. You can create it manually at:`);
-      logWarning('https://dash.cloudflare.com/?to=/:account/pages');
-    }
-  } catch (error: any) {
-    logWarning(`Pages setup skipped: ${error.message}`);
-  }
+  logInfo(`Pages project name: ${ctx.pagesProjectName}`);
+  logInfo('You will deploy using: wrangler pages deploy ./dist');
+  logInfo('Wrangler will create the project automatically on first deploy if it doesn\'t exist');
 }
 
 // Seed initial POC user
@@ -428,23 +388,12 @@ function generateSummary(ctx: SetupContext): void {
   log('cyan', `  • Database:      ${ctx.databaseName}${ctx.databaseId ? ` (${ctx.databaseId})` : ''}`);
   log('cyan', `  • KV Namespace:  ${ctx.kvNamespace}${ctx.kvId ? ` (${ctx.kvId})` : ''}`);
   log('cyan', `  • R2 Bucket:     ${ctx.r2Bucket}`);
-  log('cyan', `  • Pages Project: ${ctx.pagesProjectName}`);
 
   console.log();
-  console.log('Deployment Quick Start:');
-  log('cyan', '  Development (local):');
+  console.log('Quick Start:');
+  log('cyan', '  1. Start local development server:');
   log('bold', '     bun run dev');
   log('cyan', '     Then visit: http://localhost:8788');
-
-  console.log();
-  log('cyan', '  Production (Cloudflare Pages):');
-  log('bold', '     git push origin main');
-  log('cyan', '     (Pages auto-deploys from git commits)');
-
-  console.log();
-  console.log('Local Testing:');
-  log('cyan', '  1. Start dev server:');
-  log('bold', '     bun run dev');
 
   console.log();
   log('cyan', '  2. Login with POC user:');
@@ -458,12 +407,14 @@ function generateSummary(ctx: SetupContext): void {
   log('bold', '     bun run admin:toggle    # Toggle admin status');
 
   console.log();
-  console.log('Completing Pages Setup:');
-  log('yellow', `  ${icons.warn} Pages project requires manual GitHub connection:`)
-  log('cyan', '     1. Push code to GitHub');
-  log('cyan', '     2. Connect repo in: https://dash.cloudflare.com/?to=/:account/pages');
-  log('cyan', '     3. Configure build: bun run build:all → dist/');
-  log('cyan', '     4. Bind resources (D1, KV, R2) in Pages settings');
+  console.log('Build & Deploy:');
+  log('cyan', '  1. Build the project:');
+  log('bold', '     bun run build:all');
+
+  console.log();
+  log('cyan', '  2. Deploy to Cloudflare Pages:');
+  log('bold', '     bun run deploy');
+  log('cyan', '     (or: wrangler pages deploy ./dist)');
 
   console.log();
   logSuccess('Setup completed! Ready for development.');
@@ -510,8 +461,8 @@ async function main() {
     // Step 6: Create R2 bucket
     await createR2Bucket(ctx);
 
-    // Step 7: Create Pages project
-    await createPagesProject(ctx);
+    // Step 7: Validate Pages project
+    await validatePagesProject(ctx);
 
     // Step 8: Seed POC user
     await seedPOCUser(ctx);
