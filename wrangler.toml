@@ -1,5 +1,4 @@
 name = "icomment"
-type = "service"
 compatibility_date = "2025-01-16"
 
 # Pages Functions configuration
@@ -10,7 +9,6 @@ dir = "functions"
 [build]
 command = "bun run build:all"
 cwd = "."
-watch_paths = ["src/**/*.tsx", "src/**/*.ts", "functions/**/*.ts"]
 
 # Default Environment (main branch)
 vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "false", APP_NAME = "Guru", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#a855f7" }
