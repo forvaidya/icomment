@@ -18,6 +18,100 @@
 
 ---
 
+## Manual Infrastructure Setup
+
+**Create the following resources manually in Cloudflare dashboard and externalize in config:**
+
+### Cloudflare Pages Project
+- **Project Name:** `guru-comments`
+- **Git Integration:** None (manual deployments via CLI)
+- **Default Domain:** `guru-comments.pages.dev` (auto-assigned)
+- **Custom Domain:** `comments.devops-ranch.in` (add in Pages project settings)
+
+### Cloudflare Worker
+- **Worker Name:** `guru-api`
+- **Custom Domain:** `api.devops-ranch.in` (add via Workers custom domains)
+
+### D1 Database
+- **Database Name:** `icomment`
+- **Save Database ID for wrangler.toml**
+
+### KV Namespace
+- **Namespace Name:** `icomment-kv`
+- **Save Namespace ID for wrangler.toml**
+
+### R2 Bucket
+- **Bucket Name:** `icomment-attachments`
+- **Save Bucket Name for wrangler.toml**
+
+### Update wrangler.toml (Pages Config)
+After creating Pages project, update `wrangler.toml` with:
+```toml
+name = "guru-comments"
+compatibility_date = "2025-01-16"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "icomment"
+database_id = "<YOUR_DATABASE_ID>"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "<YOUR_KV_NAMESPACE_ID>"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "icomment-attachments"
+```
+
+### Create wrangler.api.toml (Worker Config)
+For the separate API Worker, create `wrangler.api.toml`:
+```toml
+name = "guru-api"
+type = "javascript"
+compatibility_date = "2025-01-16"
+main = "src/index.ts"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "icomment"
+database_id = "<YOUR_DATABASE_ID>"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "<YOUR_KV_NAMESPACE_ID>"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "icomment-attachments"
+
+[env.production]
+routes = [
+  { pattern = "api.devops-ranch.in", zone_name = "devops-ranch.in" }
+]
+```
+
+### Save Infrastructure IDs
+Create `.env.local` (git-ignored) with:
+```
+CLOUDFLARE_D1_ID=<YOUR_DATABASE_ID>
+CLOUDFLARE_KV_ID=<YOUR_KV_NAMESPACE_ID>
+CLOUDFLARE_R2_BUCKET=icomment-attachments
+CLOUDFLARE_PAGES_PROJECT=guru-comments
+CLOUDFLARE_PAGES_DOMAIN=comments.devops-ranch.in
+CLOUDFLARE_WORKER_DOMAIN=api.devops-ranch.in
+```
+
+### Architecture Summary
+```
+Frontend:  comments.devops-ranch.in  → Cloudflare Pages (React SPA)
+API:       api.devops-ranch.in       → Cloudflare Worker (Backend)
+Storage:   D1 + KV + R2              → Shared resources
+```
+
+---
+
 ## Project Overview
 
 **Guru** - A self-hosted, private commenting system built on Cloudflare Pages with Pages Functions. Users deploy their own instance. Emphasizes open dialogue and wisdom through community discussion. Features:
