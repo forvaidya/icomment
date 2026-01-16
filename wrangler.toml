@@ -11,7 +11,7 @@ vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "524
 # Database bindings (D1)
 [[d1_databases]]
 binding = "DB"
-database_id = "icomment-db"
+database_id = "785a9289-4c9d-4220-96c1-e54c2bdcd836"
 database_name = "icomment"
 
 # KV namespace bindings
