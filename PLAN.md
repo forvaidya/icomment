@@ -47,7 +47,7 @@ A self-hosted, private commenting system built on Cloudflare Pages with Pages Fu
 **Storage Allocation:**
 - **D1**: Users, discussions, comments, attachments metadata
 - **KV**: Discussion thread cache (for fast reads), user session cache
-- **R2**: PNG attachments (1MB max per file)
+- **R2**: PNG attachments (5MB max per file)
 
 ---
 
@@ -79,13 +79,22 @@ CREATE TABLE discussions (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   is_archived BOOLEAN DEFAULT FALSE,
+  deleted_at DATETIME,                -- NULL = not deleted, timestamp = soft deleted
 
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX idx_discussions_created_at ON discussions(created_at);
 CREATE INDEX idx_discussions_archived ON discussions(is_archived);
+CREATE INDEX idx_discussions_deleted ON discussions(deleted_at);
 ```
+
+**Soft Delete Strategy:**
+- Discussions also support soft deletes (consistent with comments)
+- `deleted_at IS NULL` = discussion exists
+- `deleted_at IS NOT NULL` = discussion soft-deleted
+- Queries: Always use `WHERE deleted_at IS NULL` in SELECT statements
+- Admin can undelete discussions (soft delete = reversible)
 
 ### 3. Comments Table (Linked List Structure)
 ```sql
@@ -150,7 +159,7 @@ CREATE INDEX idx_attachments_comment ON attachments(comment_id);
 **Environment Variable:** `AUTH_ENABLED` (default: `false` for POC)
 
 **POC Mode (`AUTH_ENABLED=false`):**
-- Hardcoded test user: `mahesh@gmail.com`
+- Hardcoded test user: `mahesh.local`
 - Type: `local`, `is_admin: true` (admin by default in POC)
 - No Auth0 integration active
 - All users auto-authenticated with test user context
@@ -236,81 +245,138 @@ bun run scripts/toggle-admin.ts --user-id <uuid> --admin true/false
 ### Authentication
 
 ```
-POST /api/auth/local
-Body: { username, password }
-Returns: { token, user }
-
-GET /api/auth/auth0
-Redirects to Auth0 login
+GET /api/auth/login
+Redirects to Auth0 login (when AUTH_ENABLED=true)
+In POC mode (AUTH_ENABLED=false), returns hardcoded mahesh.local session
 
 GET /api/auth/callback?code=...
-Auth0 callback, sets session cookie
+Auth0 callback, sets session cookie with session_id
+Stores session in KV, redirects to app
 
 POST /api/auth/logout
-Clears session
+Clears session from KV and removes session_id cookie
+Returns: { success: true }
+
+GET /api/user
+Returns: Current authenticated user { id, username, type, is_admin, created_at }
+Auth: Required
+Returns 401 if not authenticated
 ```
 
 ### Discussions
 
 ```
 GET /api/discussions
-Query: ?archived=false&page=1&limit=20
-Returns: { discussions: [...], total, hasMore }
+Query: ?archived=false&limit=20&offset=0
+Returns: {
+  discussions: [{ id, title, created_by, created_at, updated_at, is_archived, comments_count }],
+  total,
+  limit,
+  offset,
+  has_more
+}
+Auth: Any (public read)
+Notes: Filters out soft-deleted discussions
 
 POST /api/discussions
 Body: { title }
-Returns: { id, title, created_at, created_by }
+Returns: { id, title, created_by, created_at, updated_at, is_archived }
+Auth: Required (any authenticated user)
 
 GET /api/discussions/:id
-Returns: { discussion, comments_count }
+Returns: { id, title, created_by, created_at, updated_at, is_archived, comments_count }
+Auth: Any (public read)
 
 PATCH /api/discussions/:id
 Body: { title?, is_archived? }
 Auth: Admin only
+Returns: updated discussion object
+
+DELETE /api/discussions/:id
+Body: (empty)
+Auth: Admin only
+Notes: Soft deletes discussion (sets deleted_at). Cascades to comments (via CASCADE constraint).
+Returns: { success: true }
 ```
 
 ### Comments
 
 ```
 GET /api/discussions/:id/comments
-Query: ?parent_id=null&page=1&limit=50
-Returns: { comments: [...], total }
-Notes: parent_id=null gets top-level comments
+Query: ?parent_id=null&limit=50&offset=0 OR ?since=<timestamp>
+Returns (nested structure): [
+  {
+    id,
+    discussion_id,
+    parent_comment_id,
+    author: { id, username, type },
+    content,
+    created_at,
+    updated_at,
+    deleted_at,
+    children: [ ... ] (recursively nested, only for top-level when parent_id=null)
+  }
+]
+Auth: Any (public read)
+Notes:
+- parent_id=null returns top-level comments with recursively nested children
+- ?since=<ISO_timestamp> returns only comments created after timestamp (for polling)
+- Filters out soft-deleted comments (deleted_at IS NULL)
+- Response structure: Top-level array with nested children property for each comment
 
 POST /api/discussions/:id/comments
-Body: { content, parent_comment_id?, attachment? }
-Returns: { id, content, author, created_at }
+Body: { content, parent_comment_id? }
+Returns: { id, content, author: { id, username, type }, created_at, updated_at, parent_comment_id }
+Auth: Required (any authenticated user)
 
 PATCH /api/comments/:id
 Body: { content }
-Auth: Own comment or admin
-Returns: updated comment
+Auth: Own comment or admin only
+Returns: updated comment object
 
 DELETE /api/comments/:id
-Auth: Own comment or admin
+Auth: Own comment or admin only
+Returns: { success: true }
+Notes: Soft deletes comment (sets deleted_at). Shows "[Comment deleted]" placeholder in UI.
 ```
 
 ### Attachments
 
 ```
-POST /api/comments/:id/attachments
-Body: FormData with file (PNG, max 1MB)
-Returns: { id, filename, r2_url }
+POST /api/comments/:id/attachment-upload-url
+Body: { filename, file_size }
+Returns: { attachment_id, upload_url, r2_key }
+Auth: Required (authenticated user must own comment)
+Notes:
+- Generates signed URL for client-side direct R2 upload
+- file_size must be <= 5242880 (5MB)
+- filename will be sanitized and stored with UUID
+- User has 1 hour to complete upload
 
 GET /api/attachments/:id
-Redirect to R2 signed URL (public or private)
+Returns: 302 redirect to R2 signed URL
+Auth: Required (authenticated user must have access to parent comment's discussion)
+Notes: Signed URL expires in 1 hour
 
 DELETE /api/attachments/:id
-Auth: Comment author or admin
+Auth: Comment author or admin only
+Returns: { success: true }
+Notes: Deletes attachment metadata and file from R2
 ```
 
-### Admin Users (Auth0)
+### Admin - User Management
 
 ```
+GET /api/admin/users
+Query: ?limit=50&offset=0
+Returns: { users: [{ id, username, email, type, is_admin, created_at }], total, has_more }
+Auth: Admin only
+
 PATCH /api/admin/users/:id
 Body: { is_admin: boolean }
 Auth: Admin only
-Returns: updated user
+Returns: { id, username, email, type, is_admin, created_at, updated_at }
+Notes: Toggle admin status for any user
 ```
 
 ---
@@ -435,34 +501,41 @@ React State Update → Re-render
 - [ ] Wrangler configuration (D1, KV, R2 bindings)
 - [ ] TypeScript setup (tsconfig.json with Workers compatibility)
 - [ ] Build configuration (Bun for frontend bundling)
-- [ ] D1 schema initialization
+- [ ] D1 schema initialization (with soft delete fields for discussions)
 - [ ] Pages Functions directory structure (`/functions`)
-- [ ] Environment variables setup (AUTH_ENABLED feature flag)
+- [ ] Environment variables setup (AUTH_ENABLED, branding variables)
 - [ ] Health check endpoint (`GET /api/health`)
-- [ ] Error handling framework (standardized JSON error responses)
+- [ ] Error handling framework (standardized JSON error responses with error codes)
+- [ ] Rate limiting utility (KV-based request tracking)
 
 ### Phase 1: Authentication & User Management (POC Mode)
-- [ ] Implement `AUTH_ENABLED=false` hardcoded user (mahesh@gmail.com, admin)
+- [ ] Implement `AUTH_ENABLED=false` hardcoded user (mahesh.local, admin)
 - [ ] User table with `type` and `is_admin` fields
 - [ ] Auth middleware for KV session validation
 - [ ] Pages Function auth middleware (validates session on every request)
+- [ ] `GET /api/user` endpoint - Return current authenticated user info
+- [ ] `GET /api/auth/login` endpoint - POC mode returns hardcoded session, production redirects to Auth0
+- [ ] `POST /api/auth/logout` endpoint - Clear session
 - [ ] CLI: `list-users.ts` - List all users with type and admin status
 - [ ] CLI: `toggle-admin.ts` - Toggle admin status for users
-- [ ] Admin API endpoint: `PATCH /api/admin/users/:id { is_admin: boolean }`
+- [ ] Admin API endpoints: `GET /api/admin/users` and `PATCH /api/admin/users/:id`
 
 ### Phase 2: Core Discussion & Comment API
-- [ ] Discussion CRUD API (CREATE, READ, UPDATE with admin checks)
-  - `POST /api/discussions { title }`
-  - `GET /api/discussions?archived=false&limit=20`
-  - `GET /api/discussions/:id`
+- [ ] Discussion CRUD API (CREATE, READ, UPDATE, DELETE with permission checks)
+  - `POST /api/discussions { title }` (auth required)
+  - `GET /api/discussions?archived=false&limit=20&offset=0` (public read)
+  - `GET /api/discussions/:id` (public read)
   - `PATCH /api/discussions/:id { title, is_archived }` (admin only)
+  - `DELETE /api/discussions/:id` (admin only, soft delete)
 - [ ] Comment CRUD API with recursive CTE for nesting
-  - `POST /api/discussions/:id/comments { content, parent_comment_id }`
-  - `GET /api/discussions/:id/comments?parent_id=null` (recursive tree)
+  - `POST /api/discussions/:id/comments { content, parent_comment_id }` (auth required)
+  - `GET /api/discussions/:id/comments?parent_id=null` (recursive nested tree, public read)
+  - `GET /api/discussions/:id/comments?since=<timestamp>` (for polling, public read)
   - `PATCH /api/comments/:id { content }` (own comment or admin)
   - `DELETE /api/comments/:id` (soft delete: set deleted_at)
-- [ ] Rate limiting via KV (prevent spam)
-- [ ] Permission checks: Own comment vs. admin privileges
+- [ ] Rate limiting via KV (prevent spam) - apply to all endpoints except health check
+- [ ] Permission checks: Own resource vs. admin privileges
+- [ ] Soft delete filtering: Always exclude deleted_at IS NOT NULL from queries
 
 ### Phase 3: Frontend - Client-Side React SPA
 - [ ] Bun build setup for React + Tailwind
@@ -481,12 +554,14 @@ React State Update → Re-render
 
 ### Phase 4: Attachments (R2 Storage)
 - [ ] R2 bucket setup & binding in wrangler.toml
-- [ ] Signed URL generation endpoint: `POST /api/comments/:id/attachment-upload-url`
-- [ ] Client-side direct R2 upload via signed URL
-- [ ] Attachment metadata storage in D1 (with ON DELETE CASCADE)
-- [ ] Attachment list in comment view
-- [ ] Delete attachment endpoint: `DELETE /api/attachments/:id` (author or admin)
+- [ ] Signed URL generation endpoint: `POST /api/comments/:id/attachment-upload-url` (auth required)
+- [ ] Client-side direct R2 upload via signed URL (no Worker CPU used)
+- [ ] Attachment metadata storage in D1 (with ON DELETE CASCADE to comments)
+- [ ] Signed download URL endpoint: `GET /api/attachments/:id` (auth required)
+- [ ] Delete attachment endpoint: `DELETE /api/attachments/:id` (comment author or admin)
+- [ ] Attachment listing in comment responses
 - [ ] Note: No image compression (would exceed CPU limit), PNG validation only
+- [ ] Note: Max file size 5MB enforced both client-side and server-side
 
 ### Phase 5: Auth0 Integration (Infrastructure Ready, Feature-Flagged)
 - [ ] Auth0 configuration (client_id, client_secret, domain)
@@ -606,7 +681,10 @@ vars = {
   ENV = "production",
   AUTH_ENABLED = "true",
   MAX_ATTACHMENT_SIZE = "5242880",
-  RATE_LIMIT_ENABLED = "true"
+  RATE_LIMIT_ENABLED = "true",
+  APP_NAME = "BadTameez",
+  APP_LOGO_URL = "https://example.com/logo.png",
+  BRAND_COLOR = "#ff0000"
 }
 d1_databases = [{ binding = "DB", database_id = "xxx" }]
 kv_namespaces = [{ binding = "KV", id = "xxx" }]
@@ -617,7 +695,10 @@ vars = {
   ENV = "development",
   AUTH_ENABLED = "false",
   MAX_ATTACHMENT_SIZE = "5242880",
-  RATE_LIMIT_ENABLED = "false"
+  RATE_LIMIT_ENABLED = "false",
+  APP_NAME = "BadTameez (Dev)",
+  APP_LOGO_URL = "https://example.com/logo.png",
+  BRAND_COLOR = "#ff0000"
 }
 ```
 
@@ -639,8 +720,11 @@ FUNCTIONS_ONLY=false
 - `R2` - R2 bucket binding
 - `ENV` - "development" | "production"
 - `AUTH_ENABLED` - "true" | "false" (feature flag for Auth0)
-- `MAX_ATTACHMENT_SIZE` - Max file upload in bytes
-- `RATE_LIMIT_ENABLED` - Enable/disable rate limiting
+- `MAX_ATTACHMENT_SIZE` - Max file upload in bytes (default: 5242880 = 5MB)
+- `RATE_LIMIT_ENABLED` - "true" | "false" (enable/disable rate limiting)
+- `APP_NAME` - Application name displayed in UI (default: "BadTameez")
+- `APP_LOGO_URL` - URL to app logo/branding
+- `BRAND_COLOR` - Primary brand color (hex format)
 
 ---
 
@@ -683,10 +767,13 @@ FUNCTIONS_ONLY=false
    - File size limit: 5MB max
    - Filename sanitization (remove special chars, prevent path traversal)
 
-8. **Rate Limiting**: KV-based per-user rate limiting
-   - 100 read requests/min per user
-   - 10 write requests/min per user
+8. **Rate Limiting**: KV-based per-user rate limiting (when RATE_LIMIT_ENABLED=true)
+   - **Authenticated users:** 100 read requests/min, 10 write requests/min
+   - **Anonymous users:** 30 read requests/min, 0 write requests (cannot create/edit)
+   - **Health check:** Exempt from rate limiting
+   - **API endpoints:** All non-health endpoints count toward limit
    - Prevents spam and DoS
+   - Rate limit keys stored in KV with 1-minute TTL windows
 
 9. **Soft Deletion**: Comments retain audit trail
    - `deleted_at` timestamp instead of hard delete
@@ -781,7 +868,7 @@ FUNCTIONS_ONLY=false
 5. **Development Mode** (POC, Auth0 disabled)
    ```bash
    # Uses AUTH_ENABLED=false from wrangler.toml [env.development]
-   # Hardcoded user: mahesh@gmail.com (admin)
+   # Hardcoded user: mahesh.local (admin)
    bun run dev
    ```
    Server starts at `http://localhost:8788` (Pages dev server)
@@ -863,7 +950,7 @@ bun run admin:list
 Output:
 ```
 Email                    Type      Admin
-mahesh@gmail.com        local     yes
+mahesh.local            local     yes
 user@example.com        auth0     no
 admin@example.com       auth0     yes
 ```
@@ -877,12 +964,53 @@ Or via Admin Panel in UI (accessible only to admins)
 
 ---
 
+## API Error Response Format
+
+All error responses follow this standardized format:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message",
+    "details": { "field": "additional context" }
+  }
+}
+```
+
+**Common Error Codes:**
+- `UNAUTHORIZED` - No valid session (HTTP 401)
+- `FORBIDDEN` - Authenticated but lacks permissions (HTTP 403)
+- `NOT_FOUND` - Resource doesn't exist (HTTP 404)
+- `BAD_REQUEST` - Invalid input parameters (HTTP 400)
+- `VALIDATION_ERROR` - Input validation failed (HTTP 400)
+- `RATE_LIMIT_EXCEEDED` - Too many requests (HTTP 429)
+- `FILE_TOO_LARGE` - Attachment exceeds size limit (HTTP 413)
+- `INVALID_FILE_TYPE` - File is not PNG (HTTP 400)
+- `INTERNAL_ERROR` - Server error (HTTP 500)
+
+**Example:**
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Comment content is required",
+    "details": { "field": "content" }
+  }
+}
+```
+
+---
+
 ## Known Limitations & Future Enhancements
 
 **Current:**
-- PNG attachments only (1MB max)
+- PNG attachments only (5MB max)
 - Long polling for updates (not real-time)
 - Single-instance deployment
+- No markdown support in comments
 
 **Future:**
 - Multiple attachment types (PDF, images)
@@ -913,7 +1041,7 @@ Or via Admin Panel in UI (accessible only to admins)
 
 ### POC Phase Success
 - [ ] Local dev with `AUTH_ENABLED=false` works end-to-end
-- [ ] Hardcoded user (mahesh@gmail.com) automatically authenticated
+- [ ] Hardcoded user (mahesh.local) automatically authenticated
 - [ ] Admin panel accessible, can toggle user admin status
 - [ ] Discussion → comment → reply flow works
 - [ ] Admin can delete/edit any comment, non-admin cannot

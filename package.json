@@ -1,0 +1,26 @@
+{
+  "name": "icomment",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev",
+    "deploy": "wrangler pages deploy",
+    "build": "tsc --noEmit && bun build ./src/index.tsx --outdir ./dist --target browser",
+    "type-check": "tsc --noEmit",
+    "db:create": "wrangler d1 create icomment-db",
+    "db:migrate": "wrangler d1 execute icomment-db --file migrations/0001_init_schema.sql",
+    "admin:list": "bun scripts/list-users.ts",
+    "admin:toggle": "bun scripts/toggle-admin.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250116.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.60.0"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
