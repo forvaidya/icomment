@@ -152,7 +152,8 @@ async function createCloudflareResources(ctx: SetupContext): Promise<void> {
     const dbList = executeSilent('wrangler d1 list');
     if (dbList.includes(ctx.databaseName)) {
       logWarning(`Database "${ctx.databaseName}" already exists`);
-      const dbIdRegex = new RegExp(`│\\s*([a-f0-9\\-]+)\\s*│\\s*${ctx.databaseName}`);
+      // Extract UUID from table format: │ uuid │ name │
+      const dbIdRegex = new RegExp(`│\\s*([a-f0-9-]+)\\s*│\\s*${ctx.databaseName}\\s*│`);
       const dbMatch = dbList.match(dbIdRegex);
       if (dbMatch && dbMatch[1]) {
         ctx.databaseId = dbMatch[1].trim();
@@ -185,10 +186,10 @@ async function createCloudflareResources(ctx: SetupContext): Promise<void> {
       logWarning(`KV namespace "${ctx.kvNamespace}" already exists`);
       try {
         const listOutput = executeSilent('wrangler kv namespace list');
-        const kvIdRegex = new RegExp(`│\\s*([a-f0-9]+)\\s*│\\s*${ctx.kvNamespace}`);
-        const kvMatch = listOutput.match(kvIdRegex);
-        if (kvMatch && kvMatch[1]) {
-          ctx.kvId = kvMatch[1].trim();
+        const namespaces = JSON.parse(listOutput);
+        const existing = namespaces.find((ns: any) => ns.title === ctx.kvNamespace);
+        if (existing && existing.id) {
+          ctx.kvId = existing.id;
           logSuccess(`Loaded existing KV namespace ID: ${ctx.kvId}`);
         }
       } catch {
@@ -226,57 +227,61 @@ async function createCloudflareResources(ctx: SetupContext): Promise<void> {
   }
 }
 
+// Generate wrangler.toml with resource bindings
+function generateWranglerConfig(ctx: SetupContext): string {
+  const config = `name = "icomment"
+compatibility_date = "2025-01-16"
+main = "functions/_middleware.ts"
+
+[env.production]
+vars = { ENV = "production", AUTH_ENABLED = "true", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "true", APP_NAME = "Guru", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#a855f7" }
+
+[env.development]
+vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "false", APP_NAME = "Guru", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#a855f7" }
+`;
+
+  let bindings = '';
+
+  // Add D1 binding if available
+  if (ctx.databaseId) {
+    bindings += `# Database bindings (D1)
+[[d1_databases]]
+binding = "DB"
+database_id = "${ctx.databaseId}"
+database_name = "${ctx.databaseName}"
+
+`;
+  }
+
+  // Add KV binding if available
+  if (ctx.kvId) {
+    bindings += `# KV namespace bindings (Cache)
+[[kv_namespaces]]
+binding = "KV"
+id = "${ctx.kvId}"
+
+`;
+  }
+
+  // Always include R2 binding
+  bindings += `# R2 bucket bindings (always available)
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "icomment-attachments"
+`;
+
+  return config + bindings;
+}
+
 // STEP 2: Update wrangler.toml and run migrations/seeding
 async function configureAndMigrate(ctx: SetupContext): Promise<void> {
   logSection('STEP 2: Configuring wrangler.toml & Running Migrations');
 
-  // Update wrangler.toml with actual IDs
+  // Generate and write wrangler.toml with actual IDs
   try {
-    logInfo('Updating wrangler.toml with resource IDs...');
-    let content = readFileSync(ctx.wranglerToml, 'utf-8');
-
-    // Add D1 binding
-    if (ctx.databaseId && !content.includes(`database_id = "${ctx.databaseId}"`)) {
-      const d1Binding = `
-[[d1_databases]]
-binding = "DB"
-database_id = "${ctx.databaseId}"
-database_name = "${ctx.databaseName}"`;
-
-      // Remove old commented section if exists
-      content = content.replace(
-        /# Database bindings.*?\n# Will be uncommented by setup\.ts with actual database_id\n\n/s,
-        ''
-      );
-
-      // Add binding before R2 section
-      content = content.replace(
-        /# R2 bucket bindings/,
-        `# Database bindings (D1)${d1Binding}\n\n# R2 bucket bindings`
-      );
-    }
-
-    // Add KV binding
-    if (ctx.kvId && !content.includes(`id = "${ctx.kvId}"`)) {
-      const kvBinding = `
-[[kv_namespaces]]
-binding = "KV"
-id = "${ctx.kvId}"`;
-
-      // Remove old commented section if exists
-      content = content.replace(
-        /# KV namespace bindings.*?\n# Will be uncommented by setup\.ts with actual namespace id\n\n/s,
-        ''
-      );
-
-      // Add binding before R2 section
-      content = content.replace(
-        /# R2 bucket bindings/,
-        `# KV namespace bindings (Cache)${kvBinding}\n\n# R2 bucket bindings`
-      );
-    }
-
-    writeFileSync(ctx.wranglerToml, content);
+    logInfo('Generating wrangler.toml with resource IDs...');
+    const config = generateWranglerConfig(ctx);
+    writeFileSync(ctx.wranglerToml, config);
     logSuccess('Updated wrangler.toml with resource IDs');
   } catch (error: any) {
     logError(`Failed to update wrangler.toml: ${error.message}`);
