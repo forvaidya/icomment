@@ -54,6 +54,7 @@ bun.lockb
 # Wrangler
 .wrangler/
 wrangler.json
+wrangler.toml
 
 # Environment files
 .env.local
