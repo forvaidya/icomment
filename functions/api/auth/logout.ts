@@ -8,13 +8,55 @@
  * Response: { success: true }
  */
 
-import type { RequestContext } from '../../../src/types/index';
-import {
-  extractSessionIdFromCookies,
-  deleteSession,
-  createLogoutCookie,
-} from '../../../src/lib/session';
-import { createSuccessResponse, AppError, ErrorCode } from '../../../src/lib/errors';
+// Type definitions
+interface RequestContext {
+  isAuthenticated: boolean;
+  user?: any;
+  userId?: string;
+  sessionId?: string;
+}
+
+// Error codes
+enum ErrorCode {
+  BAD_REQUEST = 'BAD_REQUEST',
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+}
+
+// Helper functions
+function extractSessionIdFromCookies(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';');
+  for (const cookie of cookies) {
+    const [name, value] = cookie.trim().split('=');
+    if (name === 'session_id' && value) {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
+}
+
+async function deleteSession(kv: KVNamespace, sessionId: string): Promise<boolean> {
+  const key = `session:${sessionId}`;
+  try {
+    await kv.delete(key);
+    return true;
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    return false;
+  }
+}
+
+function createLogoutCookie(): string {
+  const pastDate = new Date(0).toUTCString();
+  return `session_id=; Path=/; Expires=${pastDate}; HttpOnly; Secure; SameSite=Strict`;
+}
+
+function createSuccessResponse(data: any) {
+  return {
+    success: true,
+    data,
+  };
+}
 
 /**
  * Logout endpoint handler
@@ -29,26 +71,27 @@ export async function onRequest(
     unknown
   >
 ): Promise<Response> {
+  // Only POST method is allowed
+  if (context.request.method !== 'POST') {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'Method not allowed. Use POST.',
+        },
+      }),
+      {
+        status: 405,
+        headers: {
+          'Content-Type': 'application/json',
+          Allow: 'POST',
+        },
+      }
+    );
+  }
+
   try {
-    // Only POST method is allowed
-    if (context.request.method !== 'POST') {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            code: ErrorCode.BAD_REQUEST,
-            message: 'Method not allowed. Use POST.',
-          },
-        }),
-        {
-          status: 405,
-          headers: {
-            'Content-Type': 'application/json',
-            Allow: 'POST',
-          },
-        }
-      );
-    }
 
     // Get session ID from cookies
     const cookieHeader = context.request.headers.get('cookie');
@@ -86,7 +129,7 @@ export async function onRequest(
       JSON.stringify({
         success: false,
         error: {
-          code: ErrorCode.INTERNAL_ERROR,
+          code: 'INTERNAL_ERROR',
           message: 'An unexpected error occurred during logout',
         },
       }),

@@ -9,11 +9,22 @@
  * - Add user information to request context
  */
 
-import {
-  extractSessionIdFromCookies,
-  getSessionUserId,
-} from '../src/lib/session';
-import type { RequestContext, User } from '../src/types/index';
+interface User {
+  id: string;
+  username: string;
+  type: 'local' | 'auth0';
+  email: string;
+  is_admin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RequestContext {
+  isAuthenticated: boolean;
+  user?: User;
+  userId?: string;
+  sessionId?: string;
+}
 
 const POC_USER: User = {
   id: 'mahesh.local',
@@ -32,6 +43,15 @@ declare global {
 }
 
 /**
+ * Extract session ID from cookie header
+ */
+function extractSessionIdFromCookies(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(/session_id=([^;]+)/);
+  return match ? match[1] : null;
+}
+
+/**
  * Handle request preprocessing
  * Attaches user context and session information
  */
@@ -44,7 +64,7 @@ export async function onRequest(
     string,
     unknown
   >
-): Promise<Response | undefined> {
+): Promise<Response | void> {
   const { request, env } = context;
   const authEnabled = env.AUTH_ENABLED !== 'false';
 
@@ -68,23 +88,26 @@ export async function onRequest(
 
   if (sessionId) {
     try {
-      const userId = await getSessionUserId(env.kv, sessionId);
-
-      if (userId) {
-        // For now, return user object with basic info
-        // In production, fetch full user from D1
-        requestContext.user = {
-          id: userId,
-          username: userId.split('.')[0] || userId,
-          type: 'auth0',
-          email: userId,
-          is_admin: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        requestContext.userId = userId;
-        requestContext.isAuthenticated = true;
-        requestContext.sessionId = sessionId;
+      const sessionData = await env.kv.get(`session:${sessionId}`);
+      if (sessionData) {
+        const session = JSON.parse(sessionData);
+        const userId = session.user_id;
+        if (userId) {
+          // For now, return user object with basic info
+          // In production, fetch full user from D1
+          requestContext.user = {
+            id: userId,
+            username: userId.split('.')[0] || userId,
+            type: 'auth0',
+            email: userId,
+            is_admin: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          requestContext.userId = userId;
+          requestContext.isAuthenticated = true;
+          requestContext.sessionId = sessionId;
+        }
       }
     } catch (error) {
       console.error('Error validating session:', error);

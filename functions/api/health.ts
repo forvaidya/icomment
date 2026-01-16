@@ -9,6 +9,13 @@
  * - System timestamp and version
  */
 
+// Type definitions
+interface Env {
+  db: D1Database;
+  kv: KVNamespace;
+  ENV?: string;
+}
+
 export interface HealthCheckResponse {
   success: boolean;
   data: {
@@ -28,14 +35,7 @@ export interface HealthCheckResponse {
  * Never rate-limited, no authentication required
  */
 export async function onRequest(
-  context: EventContext<
-    {
-      db: D1Database;
-      kv: KVNamespace;
-    },
-    string,
-    unknown
-  >
+  context: EventContext<Env, string, unknown>
 ): Promise<Response> {
   const { db, kv } = context.env;
   const timestamp = new Date().toISOString();

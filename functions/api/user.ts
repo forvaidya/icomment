@@ -9,21 +9,33 @@
  * Errors: 401 if not authenticated
  */
 
-import type { RequestContext, User } from '../../src/types/index';
-import { createSuccessResponse, AppError, ErrorCode } from '../../src/lib/errors';
+interface User {
+  id: string;
+  username: string;
+  type: 'local' | 'auth0';
+  email: string;
+  is_admin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RequestContext {
+  isAuthenticated: boolean;
+  user?: User;
+  userId?: string;
+  sessionId?: string;
+}
+
+interface Env {
+  db: D1Database;
+  kv: KVNamespace;
+}
 
 /**
  * Get current user endpoint handler
  */
 export async function onRequest(
-  context: EventContext<
-    {
-      db: D1Database;
-      kv: KVNamespace;
-    },
-    string,
-    unknown
-  >
+  context: EventContext<Env, string, unknown>
 ): Promise<Response> {
   try {
     // Get request context (set by middleware)
@@ -31,65 +43,51 @@ export async function onRequest(
 
     // Check if user is authenticated
     if (!requestContext.isAuthenticated || !requestContext.user) {
-      throw new AppError(
-        ErrorCode.UNAUTHORIZED,
-        'Authentication required',
-        401
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required',
+          },
+        }),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }
       );
     }
 
     // Return user information
     const user = requestContext.user;
     const response = {
-      id: user.id,
-      username: user.username,
-      type: user.type,
-      is_admin: user.is_admin,
-      created_at: user.created_at,
+      success: true,
+      data: {
+        id: user.id,
+        username: user.username,
+        type: user.type,
+        is_admin: user.is_admin,
+        created_at: user.created_at,
+      },
     };
 
-    return new Response(JSON.stringify(createSuccessResponse(response)), {
+    return new Response(JSON.stringify(response), {
       status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    if (error instanceof AppError) {
-      const { response, statusCode } = {
-        response: {
-          success: false,
-          error: {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-          },
-        },
-        statusCode: error.statusCode,
-      };
-
-      return new Response(JSON.stringify(response), {
-        status: statusCode,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-    }
-
     console.error('Error fetching user:', error);
     return new Response(
       JSON.stringify({
         success: false,
         error: {
-          code: ErrorCode.INTERNAL_ERROR,
+          code: 'INTERNAL_ERROR',
           message: 'An unexpected error occurred',
         },
       }),
       {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       }
     );
   }

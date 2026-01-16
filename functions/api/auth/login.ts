@@ -9,13 +9,43 @@
  * Response: Sets session_id cookie and returns { sessionId, expiresAt }
  */
 
-import type { RequestContext } from '../../../src/types/index';
-import {
-  createSession,
-  createSessionCookie,
-} from '../../../src/lib/session';
-import { isPOCMode, getPOCUser } from '../../../src/lib/auth-poc';
-import { createSuccessResponse, AppError, ErrorCode } from '../../../src/lib/errors';
+const POC_USER = {
+  id: 'mahesh.local',
+  username: 'mahesh',
+  type: 'local' as const,
+  email: 'mahesh@local',
+  is_admin: true,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+/**
+ * Create session in KV
+ */
+async function createSession(kv: KVNamespace, userId: string): Promise<{ sessionId: string; expiresAt: number }> {
+  const sessionId = crypto.randomUUID();
+  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  const session = {
+    user_id: userId,
+    created_at: Date.now(),
+    expires_at: expiresAt,
+  };
+
+  await kv.put(`session:${sessionId}`, JSON.stringify(session), {
+    expirationTtl: 7 * 24 * 60 * 60,
+  });
+
+  return { sessionId, expiresAt };
+}
+
+/**
+ * Create session cookie header
+ */
+function createSessionCookie(sessionId: string, expiresAt: number): string {
+  const expiresAtDate = new Date(expiresAt).toUTCString();
+  return `session_id=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Strict; Expires=${expiresAtDate}`;
+}
 
 /**
  * Login endpoint handler
@@ -30,89 +60,68 @@ export async function onRequest(
     unknown
   >
 ): Promise<Response> {
-  const { request, env } = context;
+  const { env } = context;
 
   try {
     // POC Mode: Return hardcoded session for mahesh.local
-    if (isPOCMode(env)) {
-      const pocUser = getPOCUser();
-
+    if (env.AUTH_ENABLED !== 'true') {
       // Create session for POC user
-      const { sessionId, expiresAt } = await createSession(
-        env.kv,
-        pocUser.id
-      );
+      const { sessionId, expiresAt } = await createSession(env.kv, POC_USER.id);
 
       // Create session cookie
       const sessionCookie = createSessionCookie(sessionId, expiresAt);
 
       // Return success response with session info
       const response = {
-        sessionId,
-        expiresAt: new Date(expiresAt).toISOString(),
-        user: {
-          id: pocUser.id,
-          username: pocUser.username,
-          type: pocUser.type,
-          is_admin: pocUser.is_admin,
-        },
-      };
-
-      return new Response(
-        JSON.stringify(createSuccessResponse(response)),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Set-Cookie': sessionCookie,
-          },
-        }
-      );
-    }
-
-    // Production Mode: Redirect to Auth0 (not implemented in POC)
-    // This would be implemented in Phase 5
-    throw new AppError(
-      ErrorCode.BAD_REQUEST,
-      'Auth0 login not configured in POC mode. Set AUTH_ENABLED=true to enable Auth0.',
-      400
-    );
-  } catch (error) {
-    if (error instanceof AppError) {
-      const { response, statusCode } = {
-        response: {
-          success: false,
-          error: {
-            code: error.code,
-            message: error.message,
-            details: error.details,
+        success: true,
+        data: {
+          sessionId,
+          expiresAt: new Date(expiresAt).toISOString(),
+          user: {
+            id: POC_USER.id,
+            username: POC_USER.username,
+            type: POC_USER.type,
+            is_admin: POC_USER.is_admin,
           },
         },
-        statusCode: error.statusCode,
       };
 
       return new Response(JSON.stringify(response), {
-        status: statusCode,
+        status: 200,
         headers: {
           'Content-Type': 'application/json',
+          'Set-Cookie': sessionCookie,
         },
       });
     }
 
+    // Production Mode: Redirect to Auth0 (not implemented in POC)
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'Auth0 login not configured in POC mode. Set AUTH_ENABLED=true to enable Auth0.',
+        },
+      }),
+      {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  } catch (error) {
     console.error('Login error:', error);
     return new Response(
       JSON.stringify({
         success: false,
         error: {
-          code: ErrorCode.INTERNAL_ERROR,
+          code: 'INTERNAL_ERROR',
           message: 'An unexpected error occurred during login',
         },
       }),
       {
         status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       }
     );
   }

@@ -10,9 +10,75 @@
  * Errors: 403 if not admin, 401 if not authenticated
  */
 
-import type { RequestContext } from '../../../src/types/index';
-import { getAllUsers } from '../../../src/lib/db';
-import { createSuccessResponse, AppError, ErrorCode } from '../../../src/lib/errors';
+// Type definitions
+interface RequestContext {
+  isAuthenticated: boolean;
+  user?: any;
+  userId?: string;
+  sessionId?: string;
+}
+
+interface User {
+  id: string;
+  username: string;
+  type: string;
+  email?: string;
+  is_admin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+// Error codes
+enum ErrorCode {
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  FORBIDDEN = 'FORBIDDEN',
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+}
+
+// Database helper functions
+async function getAllUsers(db: D1Database, limit: number = 50, offset: number = 0): Promise<PaginatedResponse<User>> {
+  const countResult = await db.prepare('SELECT COUNT(*) as total FROM users').first<{ total: number }>();
+  const total = countResult?.total || 0;
+
+  const results = await db
+    .prepare('SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?')
+    .bind(limit, offset)
+    .all<any>();
+
+  const users = (results.results || []).map((row: any) => ({
+    id: row.id,
+    username: row.username,
+    type: row.type,
+    email: row.email || undefined,
+    is_admin: row.is_admin === 1 || row.is_admin === true,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  }));
+
+  return {
+    items: users,
+    total,
+    limit,
+    offset,
+    hasMore: offset + limit < total,
+  };
+}
+
+// Response helper
+function createSuccessResponse(data: any) {
+  return {
+    success: true,
+    data,
+  };
+}
 
 /**
  * Get all users endpoint handler (admin only)
@@ -33,19 +99,29 @@ export async function onRequest(
 
     // Check if user is authenticated
     if (!requestContext.isAuthenticated || !requestContext.user) {
-      throw new AppError(
-        ErrorCode.UNAUTHORIZED,
-        'Authentication required',
-        401
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required',
+          },
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
     // Check if user is admin
     if (!requestContext.user.is_admin) {
-      throw new AppError(
-        ErrorCode.FORBIDDEN,
-        'Admin access required',
-        403
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Admin access required',
+          },
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
@@ -83,33 +159,12 @@ export async function onRequest(
       },
     });
   } catch (error) {
-    if (error instanceof AppError) {
-      const { response, statusCode } = {
-        response: {
-          success: false,
-          error: {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-          },
-        },
-        statusCode: error.statusCode,
-      };
-
-      return new Response(JSON.stringify(response), {
-        status: statusCode,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-    }
-
     console.error('Error fetching users:', error);
     return new Response(
       JSON.stringify({
         success: false,
         error: {
-          code: ErrorCode.INTERNAL_ERROR,
+          code: 'INTERNAL_ERROR',
           message: 'An unexpected error occurred',
         },
       }),
