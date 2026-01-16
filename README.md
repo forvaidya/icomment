@@ -1,10 +1,10 @@
-# BadTameez iComment
+# Guru iComment
 
 A self-hosted, private commenting system built on Cloudflare Pages with Pages Functions. Deploy your own instance for thread-based discussions with nested comments, file attachments, and admin management.
 
 ## Overview
 
-BadTameez iComment is a lightweight commenting platform designed for self-hosted deployments:
+Guru iComment is a lightweight commenting platform designed for self-hosted deployments:
 
 - **Thread-based discussions** with nested comment trees
 - **Role-based access control** with local and Auth0 users

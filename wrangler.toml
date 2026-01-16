@@ -8,7 +8,7 @@ command = "bun run build"
 cwd = "."
 
 # Default Environment (main branch)
-vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "false", APP_NAME = "BadTameez", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#ff0000" }
+vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "false", APP_NAME = "Guru", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#a855f7" }
 
 [[d1_databases]]
 binding = "DB"

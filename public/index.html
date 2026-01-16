@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="BadTameez - Comment System">
-    <meta name="theme-color" content="#ff0000">
-    <title>BadTameez - Comment System</title>
+    <meta name="description" content="Guru - Comment System">
+    <meta name="theme-color" content="#a855f7">
+    <title>Guru - Comment System</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/logo.svg">
     <link rel="manifest" href="/manifest.json">
@@ -21,7 +21,7 @@
                 sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
-            background: #fff;
+            background: #faf5ff;
             color: #333;
         }
         #root {
@@ -56,12 +56,17 @@
     <div id="root">
         <div class="loading">
             <svg class="logo" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="100" cy="80" r="45" fill="#ff0000" stroke="#cc0000" stroke-width="2"/>
-                <circle cx="85" cy="70" r="8" fill="#000000"/>
-                <circle cx="115" cy="70" r="8" fill="#000000"/>
-                <path d="M 100 80 L 96 85 L 104 85 Z" fill="#000000"/>
+                <g id="petals">
+                    <ellipse cx="100" cy="40" rx="18" ry="35" fill="#a855f7" transform="rotate(0 100 100)"/>
+                    <ellipse cx="100" cy="40" rx="18" ry="35" fill="#a855f7" transform="rotate(72 100 100)"/>
+                    <ellipse cx="100" cy="40" rx="18" ry="35" fill="#a855f7" transform="rotate(144 100 100)"/>
+                    <ellipse cx="100" cy="40" rx="18" ry="35" fill="#9945e6" transform="rotate(216 100 100)"/>
+                    <ellipse cx="100" cy="40" rx="18" ry="35" fill="#9945e6" transform="rotate(288 100 100)"/>
+                </g>
+                <circle cx="100" cy="100" r="22" fill="#fbbf24"/>
+                <circle cx="100" cy="100" r="15" fill="#f59e0b"/>
             </svg>
-            <span>BadTameez loading...</span>
+            <span>Guru loading...</span>
         </div>
     </div>
     <script type="module" src="/main.tsx"></script>
