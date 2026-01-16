@@ -2,11 +2,38 @@
 
 ## Project Overview
 
-A self-hosted, private commenting system built on Cloudflare Workers. Users must deploy their own instance. Features thread-based discussions with nested comments, role-based access control (local admins & Auth0 federated users), and attachment support.
+A self-hosted, private commenting system built on Cloudflare Pages with Pages Functions. Users deploy their own instance. Features:
+- Thread-based discussions with nested comments
+- Role-based access control (local + Auth0 users, decoupled admin status)
+- File attachment support (R2 storage)
+- Client-side React SPA (no SSR due to free tier CPU constraints)
+- Feature-flagged Auth0 integration (Auth0-ready, deactivated for POC)
+- CLI tools for user & admin management
+
+**Free Tier Deployment:** 10ms CPU limit per request, 100k API requests/day
+- Static assets: Unlimited requests (Cloudflare Pages benefit)
+- API endpoints: 100k requests/day budget (Pages Functions)
 
 ---
 
 ## Architecture & Tech Stack Decision
+
+**Deployment Platform:** Cloudflare Pages + Pages Functions (not pure Workers)
+- Unlimited static asset requests (critical for SPA)
+- Pages Functions = Workers under the hood (same CPU/quota limits)
+- Auto-deployed via Git or CLI
+
+**Frontend:** Client-side React SPA (no SSR)
+- Built locally with Bun
+- Deployed as static HTML/JS/CSS to Pages
+- Hydrated by API calls (not server-rendered HTML)
+- Tailwind CSS styling with `.icomment-` class customization
+
+**Backend:** Pages Functions (REST API)
+- API abstraction layer for all external services
+- D1 for relational data
+- KV for sessions/cache
+- R2 for file attachments
 
 ### Database: D1 SQL (Recommended over KV)
 
@@ -52,8 +79,8 @@ CREATE TABLE discussions (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   is_archived BOOLEAN DEFAULT FALSE,
-  
-  FOREIGN KEY (created_by) REFERENCES users(id)
+
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX idx_discussions_created_at ON discussions(created_at);
@@ -70,18 +97,26 @@ CREATE TABLE comments (
   content TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  is_deleted BOOLEAN DEFAULT FALSE,
-  
-  FOREIGN KEY (discussion_id) REFERENCES discussions(id),
-  FOREIGN KEY (parent_comment_id) REFERENCES comments(id),
-  FOREIGN KEY (author_id) REFERENCES users(id)
+  deleted_at DATETIME,                -- NULL = not deleted, timestamp = soft deleted
+
+  FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+  FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX idx_comments_discussion ON comments(discussion_id);
+CREATE INDEX idx_comments_discussion_parent ON comments(discussion_id, parent_comment_id);
 CREATE INDEX idx_comments_parent ON comments(parent_comment_id);
 CREATE INDEX idx_comments_author ON comments(author_id);
 CREATE INDEX idx_comments_created ON comments(created_at);
+CREATE INDEX idx_comments_deleted ON comments(deleted_at);
 ```
+
+**Soft Delete Strategy:**
+- `deleted_at IS NULL` = comment exists
+- `deleted_at IS NOT NULL` = comment soft-deleted (audit trail preserved)
+- Queries: Always use `WHERE deleted_at IS NULL` in SELECT statements
+- Deleted comments with children show `[Comment deleted]` placeholder in UI
 
 ### 4. Attachments Table
 ```sql
@@ -90,55 +125,100 @@ CREATE TABLE attachments (
   comment_id TEXT NOT NULL,
   filename TEXT NOT NULL,
   mime_type TEXT NOT NULL,            -- 'image/png'
-  file_size INTEGER NOT NULL,         -- bytes, max 1048576
-  r2_key TEXT NOT NULL,               -- path in R2
+  file_size INTEGER NOT NULL,         -- bytes, max 5242880 (5MB)
+  r2_key TEXT NOT NULL,               -- path in R2: attachments/{discussion_id}/{comment_id}/{uuid}-{filename}
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  
-  FOREIGN KEY (comment_id) REFERENCES comments(id)
+
+  FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_attachments_comment ON attachments(comment_id);
 ```
 
+**Attachment Constraints:**
+- Max file size: 5MB (increased from 1MB for high-DPI screenshots)
+- Format: PNG only (MIME type validation on upload)
+- R2 key structure: `attachments/{discussion_id}/{comment_id}/{uuid}-{sanitized_filename}.png`
+- Access: Always requires authentication + permission check (user must have access to parent comment)
+
 ---
 
 ## Authentication & Authorization
 
-### Local Admin Setup
+### POC Authentication (Feature-Flagged)
 
-**Default Credentials:**
-- Username: `admin`
-- Password: `admin`
-- Hash stored in D1 (bcrypt with salt)
+**Environment Variable:** `AUTH_ENABLED` (default: `false` for POC)
 
-### CLI Commands (Run via `wrangler tail` or local environment)
+**POC Mode (`AUTH_ENABLED=false`):**
+- Hardcoded test user: `mahesh@gmail.com`
+- Type: `local`, `is_admin: true` (admin by default in POC)
+- No Auth0 integration active
+- All users auto-authenticated with test user context
+- Perfect for development and testing features
+
+**Production Mode (`AUTH_ENABLED=true`):**
+- Requires Auth0 setup
+- Feature flag allows easy transition from POC → production
+
+### User Model: Mixed Authentication
+
+Users can be either `type: 'local'` OR `type: 'auth0'`, but **NOT auto-admin**:
+- `type: 'local'` - Email-based local user, no password storage (bcrypt incompatible with 10ms CPU)
+- `type: 'auth0'` - Federated user via Auth0, identified by `auth0_sub` claim
+- `is_admin` - Boolean flag **decoupled from type**, must be explicitly toggled
+
+**Why no bcrypt for local auth:**
+- bcrypt hashing takes 20-50ms per hash (exceeds 10ms CPU limit)
+- Auth0-only approach for secure password handling in production
+
+### Admin Management
+
+**Admin Status:** NOT automatic based on user type
+- Decoupled from authentication method
+- Can be toggled via admin UI or CLI commands
+- Only admins can toggle admin status for other users
+
+**CLI Commands for Admin/User Management:**
 
 ```bash
-# Reset admin password
-bun run scripts/reset-admin-password.ts --password newpassword
-
-# Create local user (becomes admin)
-bun run scripts/create-local-user.ts --username john --password secretpass
-
-# List users
+# List all users (email, type, admin status)
 bun run scripts/list-users.ts
+
+# Toggle admin status for a user
+bun run scripts/toggle-admin.ts --user-id <uuid> --admin true/false
 ```
 
-### Auth0 Integration
+**Admin Panel UI Component:**
+- Accessible only to admin users
+- Shows all users with email, type (local/auth0), admin toggle
+- Radio button to toggle `is_admin: yes/no`
+- Real-time update to user permissions
 
-**Flow:**
-1. User clicks "Login with Auth0"
-2. Redirect to Auth0 authorization endpoint
-3. Auth0 callback to `/api/auth/callback`
-4. Extract `sub` claim, create/update user in D1 if not exists
-5. Issue worker session cookie (JWT)
-6. Redirect to app
+### Auth0 Integration (Infrastructure Ready)
 
-**Auth0 Configuration Needed:**
-- Client ID
-- Client Secret
-- Domain
-- Redirect URI (e.g., `https://yourdomain.com/api/auth/callback`)
+**Configuration:**
+- Client ID (public, safe to expose)
+- Client Secret (stay on server)
+- Domain (public, safe to expose)
+- Redirect URI: `/api/auth/callback`
+
+**Flow (when `AUTH_ENABLED=true`):**
+1. User clicks "Login with Auth0" on SPA
+2. SPA redirects to `/api/auth/login` (Pages Function)
+3. Pages Function redirects to Auth0 with client_id
+4. User authenticates at Auth0
+5. Auth0 redirects to `/api/auth/callback?code=xxx`
+6. Pages Function exchanges code for tokens (server-side, using client_secret)
+7. Creates KV session with session_id
+8. Sets HttpOnly cookie with session_id
+9. Redirects SPA to app
+10. SPA now authenticated via secure cookie
+
+**Session Management (KV-based, not JWT):**
+- Store session in KV with random UUID key
+- HttpOnly, Secure, SameSite=Strict cookie with session_id
+- Session TTL: 7 days
+- Middleware validates session_id on every API request (~2ms lookup)
 
 ### Permission Model
 
@@ -237,31 +317,59 @@ Returns: updated user
 
 ## Frontend Architecture
 
-### SSR Rendering (Bun + React)
+### Client-Side React SPA (No SSR)
+
+**Why no SSR:**
+- React SSR takes 50-200ms (exceeds 10ms CPU limit)
+- SPA approach: Static HTML + JS bundle, API calls after mount
+- CPU used only for API endpoints (D1 queries), not rendering
+- Bun builds bundle locally, deploy static files to Pages
 
 **Flow:**
-1. Worker receives request
-2. Fetch discussions + top-level comments from D1
-3. Render React components to HTML string
-4. Return HTML with hydration data
+1. Pages serves static HTML/JS/CSS (~1ms CPU)
+2. Browser downloads bundle
+3. React mounts, makes API calls to fetch data
+4. Components render with API response data
+5. Real-time updates via client-side polling
 
 **Components:**
-- `<DiscussionList />` - Lists discussions (SSR)
-- `<DiscussionThread />` - Single discussion with all comments (SSR root level)
-- `<CommentTree />` - Renders linked list of comments
-- `<CommentItem />` - Single comment (interactive, hydrated client-side)
-- `<CommentForm />` - Add new comment (client-side)
-- `<AttachmentUpload />` - File upload for PNG
+- `<DiscussionList />` - Lists discussions (fetches via API)
+- `<DiscussionThread />` - Single discussion view (nested comments)
+- `<CommentTree />` - Renders linked comment list with recursion
+- `<CommentItem />` - Single comment, edit/delete actions
+- `<CommentForm />` - Add/reply form with optimistic updates
+- `<AttachmentUpload />` - File upload to R2 via signed URLs
+- `<AdminPanel />` - User list, admin toggle (admin-only)
 
-### Hydration Strategy
+**Build Process:**
+```bash
+# Local build (Bun)
+bun run build
 
-```jsx
-// Server: Render full HTML
-// Client: Attach event listeners to existing DOM
+# Outputs to ./dist/
+# - index.html (SPA shell)
+# - assets/app-[hash].js (React bundle)
+# - assets/styles-[hash].css (Tailwind)
 
-<script id="__INITIAL_STATE__" type="application/json">
-  { discussions, comments, currentUser }
-</script>
+# Deploy to Pages
+wrangler pages deploy ./dist
+```
+
+**API Data Flow:**
+```
+React Component
+  ↓
+fetch('/api/discussions')
+  ↓
+Pages Function (API)
+  ↓
+D1 Query (~3-5ms)
+  ↓
+KV Session Lookup (~2ms)
+  ↓
+Response JSON (~200 bytes to 10KB)
+  ↓
+React State Update → Re-render
 ```
 
 ### Real-time Updates (WebSocket or Polling)
@@ -323,48 +431,89 @@ Returns: updated user
 
 ## Implementation Phases
 
-### Phase 1: Core Foundation (Week 1-2)
-- [ ] D1 schema setup & migrations
-- [ ] Local auth (username/password with bcrypt)
-- [ ] User CRUD operations
-- [ ] Discussion CRUD API
-- [ ] Comment CRUD API (basic structure)
-- [ ] CLI tools for admin/user management
+### Phase 0: Project Setup & Foundations
+- [ ] Wrangler configuration (D1, KV, R2 bindings)
+- [ ] TypeScript setup (tsconfig.json with Workers compatibility)
+- [ ] Build configuration (Bun for frontend bundling)
+- [ ] D1 schema initialization
+- [ ] Pages Functions directory structure (`/functions`)
+- [ ] Environment variables setup (AUTH_ENABLED feature flag)
+- [ ] Health check endpoint (`GET /api/health`)
+- [ ] Error handling framework (standardized JSON error responses)
 
-### Phase 2: Comments & Attachments (Week 2-3)
-- [ ] Linked list comment structure (parent_comment_id)
-- [ ] Comment threading API
-- [ ] R2 attachment storage (PNG validation)
-- [ ] Attachment size limit enforcement (1MB)
-- [ ] Attachment deletion
+### Phase 1: Authentication & User Management (POC Mode)
+- [ ] Implement `AUTH_ENABLED=false` hardcoded user (mahesh@gmail.com, admin)
+- [ ] User table with `type` and `is_admin` fields
+- [ ] Auth middleware for KV session validation
+- [ ] Pages Function auth middleware (validates session on every request)
+- [ ] CLI: `list-users.ts` - List all users with type and admin status
+- [ ] CLI: `toggle-admin.ts` - Toggle admin status for users
+- [ ] Admin API endpoint: `PATCH /api/admin/users/:id { is_admin: boolean }`
 
-### Phase 3: Frontend & SSR (Week 3-4)
-- [ ] React component architecture
-- [ ] SSR rendering on Worker
-- [ ] Hydration strategy
-- [ ] CSS classes & override capability
-- [ ] Comment form & submission
+### Phase 2: Core Discussion & Comment API
+- [ ] Discussion CRUD API (CREATE, READ, UPDATE with admin checks)
+  - `POST /api/discussions { title }`
+  - `GET /api/discussions?archived=false&limit=20`
+  - `GET /api/discussions/:id`
+  - `PATCH /api/discussions/:id { title, is_archived }` (admin only)
+- [ ] Comment CRUD API with recursive CTE for nesting
+  - `POST /api/discussions/:id/comments { content, parent_comment_id }`
+  - `GET /api/discussions/:id/comments?parent_id=null` (recursive tree)
+  - `PATCH /api/comments/:id { content }` (own comment or admin)
+  - `DELETE /api/comments/:id` (soft delete: set deleted_at)
+- [ ] Rate limiting via KV (prevent spam)
+- [ ] Permission checks: Own comment vs. admin privileges
 
-### Phase 4: Auth0 Integration (Week 4-5)
-- [ ] Auth0 SDK setup
-- [ ] OAuth flow implementation
-- [ ] User creation on first login
-- [ ] Admin designation for Auth0 users
-- [ ] Session management
+### Phase 3: Frontend - Client-Side React SPA
+- [ ] Bun build setup for React + Tailwind
+- [ ] Create Pages `/dist` directory with index.html SPA shell
+- [ ] React components:
+  - `DiscussionList` - List discussions with pagination
+  - `DiscussionThread` - View single discussion with nested comments
+  - `CommentTree` - Recursive comment rendering
+  - `CommentItem` - Single comment with edit/delete buttons
+  - `CommentForm` - Add/reply form with optimistic updates
+  - `AdminPanel` - User list with admin toggle (admin-only)
+- [ ] Client-side state management (React hooks + Context for user/admin status)
+- [ ] Client-side polling for updates (`GET /api/discussions/:id/comments?since=<timestamp>`)
+- [ ] Tailwind CSS with `.icomment-*` class customization
+- [ ] Error handling & loading states
 
-### Phase 5: Real-time Updates (Week 5-6)
-- [ ] Long polling implementation
-- [ ] DOM diffing & update strategy
+### Phase 4: Attachments (R2 Storage)
+- [ ] R2 bucket setup & binding in wrangler.toml
+- [ ] Signed URL generation endpoint: `POST /api/comments/:id/attachment-upload-url`
+- [ ] Client-side direct R2 upload via signed URL
+- [ ] Attachment metadata storage in D1 (with ON DELETE CASCADE)
+- [ ] Attachment list in comment view
+- [ ] Delete attachment endpoint: `DELETE /api/attachments/:id` (author or admin)
+- [ ] Note: No image compression (would exceed CPU limit), PNG validation only
+
+### Phase 5: Auth0 Integration (Infrastructure Ready, Feature-Flagged)
+- [ ] Auth0 configuration (client_id, client_secret, domain)
+- [ ] OAuth flow: `/api/auth/login` redirects to Auth0
+- [ ] Auth0 callback handler: `/api/auth/callback?code=...`
+- [ ] Token exchange (server-side, using client_secret)
+- [ ] Create/update user in D1 on first login
+- [ ] Session creation in KV (not JWT)
+- [ ] Logout endpoint: `POST /api/auth/logout` (clear KV session)
+- [ ] Toggle via `AUTH_ENABLED=true` in environment
+
+### Phase 6: Real-Time Updates & Polling
+- [ ] Client-side polling implementation (every 10-30 seconds)
+- [ ] Efficient comment fetch: `GET /api/discussions/:id/comments?since=<timestamp>`
+- [ ] DOM diffing for minimal re-renders
+- [ ] Loading indicators during poll
 - [ ] Optimistic updates for form submission
-- [ ] Loading states
 
-### Phase 6: Polish & Deployment (Week 6+)
-- [ ] Error handling & validation
-- [ ] Testing (unit, integration, e2e)
-- [ ] Performance optimization
-- [ ] Deployment documentation
-- [ ] Environment variable management
-- [ ] Security audit
+### Phase 7: Testing & Deployment
+- [ ] Unit tests for permission logic, comment tree traversal
+- [ ] Integration tests for D1 CRUD with foreign keys
+- [ ] E2E tests: Create discussion → Comment → Reply flow
+- [ ] Admin permission tests: Can/cannot delete other users' comments
+- [ ] Attachment upload size validation
+- [ ] Deployment to Cloudflare Pages
+- [ ] Free tier monitoring (request count, KV usage)
+- [ ] Documentation for deployment and admin management
 
 ---
 
@@ -372,108 +521,235 @@ Returns: updated user
 
 ```
 icomment/
-├── src/
-│   ├── worker.ts              # Main Cloudflare Worker
-│   ├── routes/
-│   │   ├── auth.ts            # Authentication endpoints
-│   │   ├── discussions.ts
-│   │   ├── comments.ts
-│   │   └── attachments.ts
-│   ├── components/
+├── functions/                           # Pages Functions (API endpoints)
+│   ├── _middleware.ts                  # Auth middleware (runs before all routes)
+│   ├── api/
+│   │   ├── health.ts                  # GET /api/health (health check)
+│   │   ├── auth/
+│   │   │   ├── login.ts               # GET /api/auth/login (Auth0 redirect)
+│   │   │   ├── callback.ts            # GET /api/auth/callback?code=... (OAuth callback)
+│   │   │   └── logout.ts              # POST /api/auth/logout
+│   │   ├── discussions.ts             # GET/POST /api/discussions
+│   │   ├── discussions/[id].ts        # GET/PATCH /api/discussions/:id
+│   │   ├── discussions/[id]/comments.ts  # GET/POST /api/discussions/:id/comments
+│   │   ├── comments/[id].ts           # PATCH/DELETE /api/comments/:id
+│   │   ├── admin/
+│   │   │   └── users/[id].ts          # PATCH /api/admin/users/:id
+│   │   ├── attachments/
+│   │   │   ├── upload-url.ts          # POST /api/comments/:id/attachment-upload-url
+│   │   │   └── [id].ts                # GET/DELETE /api/attachments/:id
+│   │
+│   └── _app.ts                         # (Optional) App initialization
+│
+├── src/                                 # Frontend React SPA source
+│   ├── main.tsx                        # React entry point
+│   ├── App.tsx                         # Main app component
+│   ├── pages/
 │   │   ├── DiscussionList.tsx
 │   │   ├── DiscussionThread.tsx
+│   │   └── AdminPanel.tsx
+│   ├── components/
 │   │   ├── CommentTree.tsx
 │   │   ├── CommentItem.tsx
 │   │   ├── CommentForm.tsx
 │   │   └── AttachmentUpload.tsx
+│   ├── hooks/
+│   │   ├── useDiscussions.ts
+│   │   ├── useComments.ts
+│   │   └── useUser.ts
 │   ├── lib/
-│   │   ├── auth.ts            # Auth logic (local & Auth0)
-│   │   ├── db.ts              # D1 queries
-│   │   ├── kv.ts              # KV cache helpers
-│   │   ├── r2.ts              # R2 upload/delete
-│   │   ├── hash.ts            # bcrypt helpers
-│   │   └── ssr.ts             # React SSR
-│   ├── types/
-│   │   └── index.ts           # TypeScript types
+│   │   ├── api.ts                     # API client (fetch wrappers)
+│   │   ├── types.ts                   # TypeScript types (shared)
+│   │   └── auth.ts                    # Auth context/provider
 │   └── styles/
-│       └── icomment.css       # Default styles
+│       └── globals.css                # Tailwind + base styles
+│
 ├── scripts/
-│   ├── reset-admin-password.ts
-│   ├── create-local-user.ts
-│   └── list-users.ts
+│   ├── list-users.ts                  # CLI: List all users
+│   └── toggle-admin.ts                # CLI: Toggle user admin status
+│
 ├── migrations/
-│   └── 0001_init_schema.sql   # Initial D1 schema
-├── wrangler.toml              # Cloudflare config
+│   └── 0001_init_schema.sql           # D1 schema initialization
+│
+├── dist/                               # Built SPA (generated by Bun)
+│   ├── index.html
+│   ├── assets/
+│   │   ├── app-[hash].js
+│   │   └── styles-[hash].css
+│
+├── wrangler.toml                       # Cloudflare Pages configuration
 ├── tsconfig.json
+├── bunfig.toml                         # Bun config (optional)
 ├── package.json
+├── tailwind.config.js                  # Tailwind customization
 ├── PLAN.md
 ├── CLAUDE.md
 ├── .gitignore
 └── README.md
 ```
 
+**Key Differences from Original Plan:**
+- `/functions` instead of `/src/worker.ts` (Pages Functions structure)
+- `/src` for frontend React SPA only (not full-stack)
+- No `/src/routes` (API is in `/functions/api`)
+- No `/src/lib/ssr.ts` (no server-side rendering)
+- Build output to `/dist` for Pages deployment
+
 ---
 
 ## Environment Variables
 
-```bash
-# wrangler.toml
+**In `wrangler.toml`:**
+```toml
 [env.production]
-vars = { ENV = "production" }
-database_id = "xxx"
-kv_namespaces = [{ binding = "CACHE", id = "xxx" }]
-r2_buckets = [{ binding = "ATTACHMENTS", bucket_name = "icomment-attachments" }]
+vars = {
+  ENV = "production",
+  AUTH_ENABLED = "true",
+  MAX_ATTACHMENT_SIZE = "5242880",
+  RATE_LIMIT_ENABLED = "true"
+}
+d1_databases = [{ binding = "DB", database_id = "xxx" }]
+kv_namespaces = [{ binding = "KV", id = "xxx" }]
+r2_buckets = [{ binding = "R2", bucket_name = "icomment-attachments" }]
 
-# .env (local only)
+[env.development]
+vars = {
+  ENV = "development",
+  AUTH_ENABLED = "false",
+  MAX_ATTACHMENT_SIZE = "5242880",
+  RATE_LIMIT_ENABLED = "false"
+}
+```
+
+**In `.env` (development only, not committed):**
+```bash
+# Auth0 (only needed if AUTH_ENABLED=true)
 AUTH0_DOMAIN=your-auth0-domain.auth0.com
 AUTH0_CLIENT_ID=xxxx
 AUTH0_CLIENT_SECRET=xxxx
-AUTH0_CALLBACK_URL=http://localhost:8787/api/auth/callback
+AUTH0_CALLBACK_URL=http://localhost:8788/api/auth/callback
+
+# For Pages dev server
+FUNCTIONS_ONLY=false
 ```
+
+**Runtime Environment Variables (injected by Pages/Workers):**
+- `DB` - D1 database binding
+- `KV` - KV namespace binding
+- `R2` - R2 bucket binding
+- `ENV` - "development" | "production"
+- `AUTH_ENABLED` - "true" | "false" (feature flag for Auth0)
+- `MAX_ATTACHMENT_SIZE` - Max file upload in bytes
+- `RATE_LIMIT_ENABLED` - Enable/disable rate limiting
 
 ---
 
 ## Security Considerations
 
-1. **CORS**: Configure allowed origins (same-origin only recommended for private system)
-2. **CSRF**: Use SameSite cookies, CSRF tokens for state-changing operations
-3. **SQL Injection**: All D1 queries use parameterized statements
-4. **Password Storage**: Bcrypt with salt for local users (never plain text)
-5. **Token Expiration**: JWT tokens expire in 24h, refresh via login
-6. **R2 Access**: Signed URLs for attachment downloads, no public bucket
-7. **Input Validation**: Content length limits, PNG MIME type check, 1MB file size
-8. **Rate Limiting**: Consider adding rate limits to prevent spam
-9. **Deletion**: Soft delete comments (is_deleted flag) to maintain discussion integrity
-10. **Auth0 Security**: Use PKCE flow, validate ID tokens on backend
+1. **SPA Architecture**: SPA never exposes Auth0 credentials or secrets to browser
+   - Auth0 client_id is public (safe)
+   - Auth0 client_secret stays on server only
+   - All external API calls via Pages Functions (API abstraction)
+
+2. **Authentication**: Feature-flagged Auth0, no local password storage
+   - POC uses hardcoded test user (safe for development)
+   - Production: Auth0 OAuth2 with PKCE flow
+   - No bcrypt (incompatible with 10ms CPU limit)
+
+3. **Session Management**: KV-based sessions, not stateless JWT
+   - Random session_id stored in KV (not self-signed JWT)
+   - HttpOnly cookies prevent JS access
+   - SameSite=Strict prevents CSRF
+   - 7-day TTL with secure flags
+
+4. **SQL Injection**: All D1 queries use parameterized statements
+   - Never concatenate user input into SQL
+   - Use `?` placeholders for all parameters
+   - Example: `db.prepare('SELECT * FROM comments WHERE id = ?').bind(commentId)`
+
+5. **CORS**: Restricted to same-origin by default
+   - Can be overridden via `CORS_ORIGINS` env variable if needed
+   - For self-hosted private system, same-origin is preferred
+
+6. **R2 Attachments**: Signed URLs with authentication requirement
+   - User must be authenticated to generate signed URL
+   - Verify user has access to parent comment before signing
+   - 1-hour signed URL expiration
+   - No public bucket access (all attachments private)
+
+7. **Input Validation**:
+   - Content length limits (max 10KB per comment)
+   - PNG MIME type validation on upload
+   - File size limit: 5MB max
+   - Filename sanitization (remove special chars, prevent path traversal)
+
+8. **Rate Limiting**: KV-based per-user rate limiting
+   - 100 read requests/min per user
+   - 10 write requests/min per user
+   - Prevents spam and DoS
+
+9. **Soft Deletion**: Comments retain audit trail
+   - `deleted_at` timestamp instead of hard delete
+   - Preserves discussion thread integrity
+   - Admin can view deleted comments for audit/recovery
+
+10. **Admin Actions**: Only admins can modify other users' comments
+    - Permission check on every PATCH/DELETE
+    - Log admin actions (audit trail)
+    - is_admin decoupled from user type (explicit toggle)
 
 ---
 
 ## Testing Strategy
 
-### Unit Tests
-- Auth logic (bcrypt, JWT)
-- Comment tree traversal
-- Permission checks
+### Unit Tests (Vitest)
+- Permission logic: Can user edit/delete comment?
+- Comment tree traversal: Recursive query returns correct nesting
+- Session validation: Valid/expired/invalid session_ids
+- Input sanitization: Filename, content validation
+- Rate limiting: Counter logic, time windows
 
-### Integration Tests
-- Auth0 callback flow
+### Integration Tests (Wrangler + D1)
 - D1 CRUD operations with foreign keys
-- R2 upload/download
+- Cascade deletion: Delete discussion → orphaned comments handled
+- Soft delete: Comments marked deleted_at, not removed
+- Auth0 flow: (skip in POC) Login → user created → session in KV
+- Admin toggle: Can toggle is_admin, affects permissions immediately
 
-### E2E Tests
-- Full discussion creation → comment → reply flow
-- Admin CRUD other users' comments
-- Regular user cannot delete others' comments
-- Attachment upload size validation
-- SSR rendering + hydration
+### E2E Tests (Browser automation)
+- POC mode: Hardcoded user logged in automatically
+- Create discussion → view in list
+- Add comment → appears in discussion
+- Reply to comment → nested in tree
+- Edit own comment → persists
+- Delete own comment → soft delete, shows placeholder
+- Admin view other user's comment → can edit/delete
+- Non-admin cannot edit/delete others' comments
+- Attachment upload: PNG validation, file size limit
+- Admin panel: List users, toggle admin status
+
+### Performance Tests
+- Discussion list load: < 200ms (D1 query + KV lookup)
+- Comment tree render: < 500ms (includes client-side recursion)
+- API endpoint CPU time: < 10ms per request (Cloudflare limit)
+
+### Security Tests
+- SQL injection: Input with SQL keywords doesn't break queries
+- XSS: HTML in comment content is escaped
+- CSRF: State-changing requests fail without session cookie
+- File upload: Non-PNG files rejected, oversized files rejected
+- Unauthorized access: Users without session get 401
 
 ---
 
 ## Deployment Guide
 
-1. **Clone/Fork Repository**
+### Local Development Setup
+
+1. **Clone Repository**
    ```bash
    git clone <your-fork>
+   cd icomment
    ```
 
 2. **Install Dependencies**
@@ -481,29 +757,123 @@ AUTH0_CALLBACK_URL=http://localhost:8787/api/auth/callback
    bun install
    ```
 
-3. **Setup Cloudflare**
+3. **Setup Local Cloudflare Resources**
    ```bash
+   # Authenticate with Cloudflare
    npx wrangler login
+
+   # Create D1 database
    npx wrangler d1 create icomment-db
+
+   # Run migrations to create schema
    npx wrangler d1 execute icomment-db --file migrations/0001_init_schema.sql
-   npx wrangler kv:namespace create CACHE
+
+   # Create KV namespace for sessions
+   npx wrangler kv:namespace create KV
+
+   # Create R2 bucket for attachments
    npx wrangler r2 bucket create icomment-attachments
    ```
 
-4. **Create Auth0 App** (optional)
-   - Go to auth0.com, create application
-   - Set callback URL to `https://yourdomain.com/api/auth/callback`
-   - Copy credentials to `.env`
+4. **Configure wrangler.toml**
+   - Update `database_id`, `kv_namespaces`, `r2_buckets` with resource IDs from step 3
 
-5. **Deploy**
+5. **Development Mode** (POC, Auth0 disabled)
    ```bash
-   bun run deploy
+   # Uses AUTH_ENABLED=false from wrangler.toml [env.development]
+   # Hardcoded user: mahesh@gmail.com (admin)
+   bun run dev
+   ```
+   Server starts at `http://localhost:8788` (Pages dev server)
+
+6. **Build Frontend**
+   ```bash
+   bun run build
+   # Outputs to ./dist/
    ```
 
-6. **Set Admin Password**
+### Production Deployment (Cloudflare Pages)
+
+1. **Push to GitHub**
    ```bash
-   bun run scripts/reset-admin-password.ts --password yournewpassword
+   git push origin main
    ```
+
+2. **Connect to Cloudflare Pages**
+   - Go to https://pages.cloudflare.com
+   - Connect your GitHub repository
+   - Select `main` branch
+   - Build command: `bun run build`
+   - Build directory: `dist`
+
+3. **Configure Production Environment** (in Cloudflare Pages)
+   - Set `AUTH_ENABLED=true`
+   - Add Auth0 credentials (if using Auth0)
+   - Bind D1 database as `DB`
+   - Bind KV namespace as `KV`
+   - Bind R2 bucket as `R2`
+
+4. **Deploy**
+   - Pages auto-deploys on git push to main
+   - Or manually deploy: `wrangler pages deploy ./dist`
+
+5. **Post-Deployment Checks**
+   ```bash
+   # Check health endpoint
+   curl https://yourdomain.pages.dev/api/health
+
+   # List users (verify database)
+   bun run admin:list
+
+   # Monitor free tier usage
+   # Dashboard: https://dash.cloudflare.com → Pages → icomment → Analytics
+   ```
+
+### Switching from POC to Production Auth0
+
+1. **Create Auth0 Application**
+   - Go to https://auth0.com
+   - Create new Application (Regular Web Application)
+   - Set Callback URLs: `https://yourdomain.pages.dev/api/auth/callback`
+   - Copy Client ID, Client Secret, Domain
+
+2. **Add Auth0 Users** (optional)
+   - In Auth0 dashboard, create users
+   - They will auto-create in iComment on first login
+
+3. **Toggle Auth0 in Production**
+   ```bash
+   # In Cloudflare Pages environment variables
+   AUTH_ENABLED=true
+   AUTH0_DOMAIN=xxx.auth0.com
+   AUTH0_CLIENT_ID=xxxx
+   AUTH0_CLIENT_SECRET=xxxx
+   ```
+
+4. **Redeploy**
+   - `git commit` and `git push` to trigger Pages deployment
+   - Or manually: `wrangler pages deploy ./dist`
+
+### Manage Users & Admin Status
+
+**List all users:**
+```bash
+bun run admin:list
+```
+Output:
+```
+Email                    Type      Admin
+mahesh@gmail.com        local     yes
+user@example.com        auth0     no
+admin@example.com       auth0     yes
+```
+
+**Toggle admin status:**
+```bash
+bun run admin:toggle --user-id <uuid> --admin true
+```
+
+Or via Admin Panel in UI (accessible only to admins)
 
 ---
 
@@ -530,12 +900,39 @@ AUTH0_CALLBACK_URL=http://localhost:8787/api/auth/callback
 
 ## Success Criteria
 
-- ✓ Users can create discussions and comments
-- ✓ Nested comments (linked list structure) render correctly
-- ✓ Role-based access control enforced
-- ✓ Attachments upload to R2 with size/type validation
-- ✓ SSR rendering with immediate client-side hydration
-- ✓ New comments appear without page refresh
-- ✓ CSS fully customizable via class overrides
-- ✓ Deploy-your-own model (no shared backend)
-- ✓ Local admin + Auth0 users working together
+### MVP (Minimum Viable Product)
+- [ ] **Authentication**: POC mode with hardcoded user, Auth0 infrastructure ready
+- [ ] **Discussions**: Create, list, view, archive (admin only)
+- [ ] **Comments**: Create, edit own, delete own, recursive tree rendering
+- [ ] **Permissions**: Admin can edit/delete any comment, regular users can't
+- [ ] **Admin Management**: List users, toggle admin status via CLI and UI
+- [ ] **Frontend**: Client-side React SPA with Tailwind CSS
+- [ ] **Database**: D1 with cascade deletion and soft-deletes
+- [ ] **Deployment**: Cloudflare Pages with 100k request/day free tier
+- [ ] **CPU Budget**: All API endpoints < 10ms CPU time (verified)
+
+### POC Phase Success
+- [ ] Local dev with `AUTH_ENABLED=false` works end-to-end
+- [ ] Hardcoded user (mahesh@gmail.com) automatically authenticated
+- [ ] Admin panel accessible, can toggle user admin status
+- [ ] Discussion → comment → reply flow works
+- [ ] Admin can delete/edit any comment, non-admin cannot
+
+### Production Ready (Additional Requirements)
+- [ ] Auth0 integration fully functional (`AUTH_ENABLED=true`)
+- [ ] Multiple users can log in via Auth0
+- [ ] New Auth0 users auto-create in iComment on first login
+- [ ] Attachments upload to R2 with signed URLs
+- [ ] Rate limiting prevents spam
+- [ ] Tests pass: unit, integration, E2E
+- [ ] Documentation: Deployment guide, admin guide, user guide
+- [ ] Security audit: SQL injection, XSS, CSRF tests pass
+- [ ] Free tier monitoring: Request count, KV usage tracked
+
+### Architecture Compliance
+- [ ] No SSR (client-side SPA only)
+- [ ] No bcrypt (Auth0 for password security)
+- [ ] KV sessions instead of JWT signing
+- [ ] API abstraction layer (SPA never calls Auth0 directly)
+- [ ] Cloudflare Pages deployment (unlimited static requests)
+- [ ] Pages Functions for API (100k requests/day budget)
