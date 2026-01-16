@@ -7,16 +7,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: "#ff0000", // BadTameez red
+        brand: "#a855f7", // Guru purple
       },
       typography: {
         DEFAULT: {
           css: {
             color: "#333",
             a: {
-              color: "#ff0000",
+              color: "#a855f7",
               "&:hover": {
-                color: "#cc0000",
+                color: "#9945e6",
               },
             },
           },

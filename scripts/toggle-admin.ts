@@ -56,8 +56,8 @@ async function toggleAdmin(): Promise<void> {
     // Note: In a real scenario, we would connect to the database and update the user
     // For now, this shows the expected output and placeholder implementation
 
-    console.log('BadTameez - Toggle User Admin Status');
-    console.log('===================================\n');
+    console.log('Guru - Toggle User Admin Status');
+    console.log('==============================\n');
 
     console.log(`User ID: ${userId}`);
     console.log(`Admin Status: ${admin ? 'yes' : 'no'}`);

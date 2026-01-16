@@ -1,5 +1,5 @@
 /**
- * POC Authentication Utilities for BadTameez Comment System
+ * POC Authentication Utilities for Guru Comment System
  * Handles POC mode user creation and validation
  * Feature-flagged with AUTH_ENABLED environment variable
  */

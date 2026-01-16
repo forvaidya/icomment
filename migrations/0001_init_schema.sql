@@ -1,4 +1,4 @@
--- BadTameez Comment System - Initial Schema
+-- Guru Comment System - Initial Schema
 -- Database: Cloudflare D1 (SQLite)
 -- Version: 0.1.0
 

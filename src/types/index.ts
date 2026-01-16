@@ -1,5 +1,5 @@
 /**
- * Shared TypeScript types for BadTameez Comment System
+ * Shared TypeScript types for Guru Comment System
  * Used across frontend, backend, and API contracts
  */
 

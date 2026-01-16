@@ -91,9 +91,9 @@ ENV = "development"
 AUTH_ENABLED = "false"          # POC mode: hardcoded user
 MAX_ATTACHMENT_SIZE = "5242880" # 5MB
 RATE_LIMIT_ENABLED = "false"
-APP_NAME = "BadTameez (Dev)"
+APP_NAME = "Guru (Dev)"
 APP_LOGO_URL = "/logo.svg"
-BRAND_COLOR = "#ff0000"
+BRAND_COLOR = "#a855f7"
 ```
 
 #### Production
@@ -103,9 +103,9 @@ ENV = "production"
 AUTH_ENABLED = "true"           # Enable Auth0
 MAX_ATTACHMENT_SIZE = "5242880"
 RATE_LIMIT_ENABLED = "true"
-APP_NAME = "BadTameez"
+APP_NAME = "Guru"
 APP_LOGO_URL = "/logo.svg"
-BRAND_COLOR = "#ff0000"
+BRAND_COLOR = "#a855f7"
 ```
 
 ### Database Setup
@@ -449,13 +449,13 @@ bun run type-check       # TypeScript validation
 
 ## Branding
 
-BadTameez means "arrogant/disrespectful" and represents a no-censorship, all-comments-welcome philosophy.
+Guru represents wisdom, insight, and open dialogue. Our flower logo symbolizes growth and enlightenment through community discussion.
 
 ### Logo & Styling
 
-- **Logo**: Skull icon (SVG at `/public/logo.svg`)
-- **Favicon**: Skull icon (ICO at `/public/favicon.ico`)
-- **Color**: Red (#ff0000) by default
+- **Logo**: Flower icon with purple petals and golden center (SVG at `/public/logo.svg`)
+- **Favicon**: Flower icon matching the logo (SVG at `/public/favicon.svg`)
+- **Color**: Purple (#a855f7) by default, customizable
 - **Customizable**: Update `BRAND_COLOR` in wrangler.toml
 
 ## Limitations

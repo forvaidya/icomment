@@ -1,5 +1,5 @@
 /**
- * Database Query Helpers for BadTameez Comment System
+ * Database Query Helpers for Guru Comment System
  * Provides typed query helpers for D1 database operations
  * All queries use parameterized statements to prevent SQL injection
  */

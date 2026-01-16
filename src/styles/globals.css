@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Guru branding colors */
+:root {
+  --color-primary: #a855f7;
+  --color-primary-dark: #9945e6;
+  --color-accent: #fbbf24;
+  --color-accent-dark: #f59e0b;
+}
+
+/* Base styles */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+  color: #1f2937;
+}
+
+/* Guru component styles with .icomment- prefix */
+.icomment-container {
+  --apply: w-full;
+}
+
+.icomment-discussion {
+  --apply: bg-white rounded-lg shadow-md border border-purple-200 p-6 mb-6;
+}
+
+.icomment-discussion-header {
+  --apply: flex items-start justify-between mb-4;
+}
+
+.icomment-discussion-title {
+  --apply: text-2xl font-bold text-gray-900;
+}
+
+.icomment-discussion-meta {
+  --apply: text-sm text-gray-500 mt-2;
+}
+
+.icomment-comments {
+  --apply: space-y-4;
+}
+
+.icomment-comment {
+  --apply: bg-gray-50 rounded-lg p-4 border border-gray-200;
+}
+
+.icomment-comment-header {
+  --apply: flex items-center justify-between mb-2;
+}
+
+.icomment-comment-author {
+  --apply: font-semibold text-gray-900;
+}
+
+.icomment-comment-timestamp {
+  --apply: text-sm text-gray-500;
+}
+
+.icomment-comment-content {
+  --apply: text-gray-700 leading-relaxed;
+}
+
+.icomment-comment-actions {
+  --apply: flex gap-2 mt-3 pt-3 border-t border-gray-200;
+}
+
+.icomment-comment-children {
+  --apply: ml-6 mt-4 border-l-2 border-purple-200 pl-4;
+}
+
+.icomment-form {
+  --apply: bg-white rounded-lg shadow-md border border-purple-200 p-6;
+}
+
+.icomment-textarea {
+  --apply: w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500;
+}
+
+.icomment-submit-btn {
+  --apply: px-6 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition mt-3;
+}
+
+.icomment-attachment {
+  --apply: border-2 border-dashed border-purple-300 rounded-lg p-6 text-center;
+}
+
+.icomment-attachment-input {
+  --apply: hidden;
+}
+
+.icomment-attachment-image {
+  --apply: max-w-xs rounded-lg shadow-md;
+}
+
+.icomment-attachment-preview {
+  --apply: mt-4 space-y-2;
+}
+
+/* Loading animation */
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-pulse {
+  animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Utility classes for responsive design */
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-200 text-gray-900 font-semibold rounded-lg hover:bg-gray-300 transition;
+  }
+
+  .card {
+    @apply bg-white rounded-lg shadow-md border border-gray-200 p-6;
+  }
+
+  .badge-admin {
+    @apply inline-block text-xs bg-purple-100 text-purple-800 px-3 py-1 rounded-full font-semibold;
+  }
+
+  .badge-success {
+    @apply inline-block text-xs bg-green-100 text-green-800 px-3 py-1 rounded-full font-semibold;
+  }
+
+  .badge-error {
+    @apply inline-block text-xs bg-red-100 text-red-800 px-3 py-1 rounded-full font-semibold;
+  }
+}
+
+/* Dark mode support (optional) */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: linear-gradient(135deg, #2d1b4e 0%, #1f1035 100%);
+    color: #f3f4f6;
+  }
+
+  .icomment-discussion,
+  .icomment-form,
+  .card {
+    @apply bg-gray-800 border-purple-900;
+  }
+
+  .icomment-comment {
+    @apply bg-gray-700 border-gray-600;
+  }
+
+  .icomment-comment-content {
+    @apply text-gray-200;
+  }
+
+  .icomment-comment-author {
+    @apply text-gray-100;
+  }
+}

@@ -1,5 +1,5 @@
 /**
- * Error handling framework for BadTameez Comment System
+ * Error handling framework for Guru Comment System
  * Standardized error responses and error classes
  */
 

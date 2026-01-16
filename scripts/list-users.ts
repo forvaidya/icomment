@@ -31,8 +31,8 @@ async function listUsers(): Promise<void> {
   try {
     // Note: In a real scenario, we would get the database binding from Wrangler
     // For now, this is a placeholder that shows the expected output format
-    console.log('BadTameez Users');
-    console.log('===============\n');
+    console.log('Guru Users');
+    console.log('==========\n');
 
     // Format header
     const header = [
