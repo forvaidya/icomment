@@ -116,7 +116,7 @@ async function deployToPages(): Promise<void> {
 
   try {
     logInfo('Deploying dist/ to Cloudflare Pages...');
-    execute('wrangler pages deploy ./dist', false);
+    execute('wrangler pages deploy ./dist --project-name guru-comments', false);
     logSuccess('Deployment completed successfully!');
   } catch (error: any) {
     logError(`Deployment failed: ${error.message}`);

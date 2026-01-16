@@ -229,48 +229,28 @@ async function createCloudflareResources(ctx: SetupContext): Promise<void> {
 
 // Generate wrangler.toml with resource bindings
 function generateWranglerConfig(ctx: SetupContext): string {
+  const d1Binding = ctx.databaseId ? `d1_databases = [{ binding = "DB", database_id = "${ctx.databaseId}", database_name = "${ctx.databaseName}" }]` : '';
+  const kvBinding = ctx.kvId ? `kv_namespaces = [{ binding = "KV", id = "${ctx.kvId}" }]` : '';
+  const r2Binding = `r2_buckets = [{ binding = "R2", bucket_name = "icomment-attachments" }]`;
+
   const config = `name = "icomment"
 compatibility_date = "2025-01-16"
-main = "functions/_middleware.ts"
+pages_build_output_dir = "dist"
 
 [env.production]
 vars = { ENV = "production", AUTH_ENABLED = "true", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "true", APP_NAME = "Guru", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#a855f7" }
+${d1Binding}
+${kvBinding}
+${r2Binding}
 
-[env.development]
+[env.preview]
 vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "false", APP_NAME = "Guru", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#a855f7" }
+${d1Binding}
+${kvBinding}
+${r2Binding}
 `;
 
-  let bindings = '';
-
-  // Add D1 binding if available
-  if (ctx.databaseId) {
-    bindings += `# Database bindings (D1)
-[[d1_databases]]
-binding = "DB"
-database_id = "${ctx.databaseId}"
-database_name = "${ctx.databaseName}"
-
-`;
-  }
-
-  // Add KV binding if available
-  if (ctx.kvId) {
-    bindings += `# KV namespace bindings (Cache)
-[[kv_namespaces]]
-binding = "KV"
-id = "${ctx.kvId}"
-
-`;
-  }
-
-  // Always include R2 binding
-  bindings += `# R2 bucket bindings (always available)
-[[r2_buckets]]
-binding = "R2"
-bucket_name = "icomment-attachments"
-`;
-
-  return config + bindings;
+  return config;
 }
 
 // STEP 2: Update wrangler.toml and run migrations/seeding

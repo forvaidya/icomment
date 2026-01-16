@@ -9,16 +9,17 @@
  * - System timestamp and version
  */
 
-import { createSuccessResponse } from '../../src/lib/errors';
-
 export interface HealthCheckResponse {
-  status: 'ok' | 'degraded' | 'down';
-  timestamp: string;
-  version: string;
-  environment: 'development' | 'production' | 'staging';
-  checks: {
-    database: boolean;
-    kvStore: boolean;
+  success: boolean;
+  data: {
+    status: 'ok' | 'degraded' | 'down';
+    timestamp: string;
+    version: string;
+    environment: 'development' | 'production' | 'staging';
+    checks: {
+      database: boolean;
+      kvStore: boolean;
+    };
   };
 }
 
@@ -38,7 +39,7 @@ export async function onRequest(
 ): Promise<Response> {
   const { db, kv } = context.env;
   const timestamp = new Date().toISOString();
-  const environment = (process.env.ENVIRONMENT || 'development') as
+  const environment = (context.env.ENV || 'development') as
     | 'development'
     | 'production'
     | 'staging';
@@ -68,26 +69,29 @@ export async function onRequest(
   }
 
   const allHealthy = dbHealthy && kvHealthy;
-  const status: HealthCheckResponse['status'] = allHealthy
+  const status: 'ok' | 'degraded' | 'down' = allHealthy
     ? 'ok'
     : dbHealthy || kvHealthy
       ? 'degraded'
       : 'down';
 
   const healthResponse: HealthCheckResponse = {
-    status,
-    timestamp,
-    version: '0.1.0',
-    environment,
-    checks: {
-      database: dbHealthy,
-      kvStore: kvHealthy,
+    success: true,
+    data: {
+      status,
+      timestamp,
+      version: '0.1.0',
+      environment,
+      checks: {
+        database: dbHealthy,
+        kvStore: kvHealthy,
+      },
     },
   };
 
-  const statusCode = status === 'ok' ? 200 : status === 'degraded' ? 503 : 503;
+  const statusCode = status === 'ok' ? 200 : 503;
 
-  return new Response(JSON.stringify(createSuccessResponse(healthResponse)), {
+  return new Response(JSON.stringify(healthResponse), {
     status: statusCode,
     headers: {
       'Content-Type': 'application/json',
