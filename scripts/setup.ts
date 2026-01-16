@@ -14,7 +14,7 @@
  * Idempotent: Safe to run multiple times
  */
 
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import path from 'path';
 import os from 'os';
@@ -77,6 +77,47 @@ interface SetupContext {
   migrationsFile: string;
   pagesProjectName: string;
   isLocalMode: boolean;
+}
+
+// Helper to update wrangler.toml with database ID and KV namespace ID
+async function updateWranglerConfig(ctx: SetupContext): Promise<void> {
+  try {
+    let content = readFileSync(ctx.wranglerToml, 'utf-8');
+    let updated = false;
+
+    // Update database_id if available
+    if (ctx.databaseId) {
+      const newContent = content.replace(
+        /database_id\s*=\s*"[^"]*"/,
+        `database_id = "${ctx.databaseId}"`
+      );
+      if (content !== newContent) {
+        content = newContent;
+        updated = true;
+        logInfo(`Updated wrangler.toml with database ID: ${ctx.databaseId}`);
+      }
+    }
+
+    // Update KV namespace id if available
+    if (ctx.kvId) {
+      const kvPattern = /([[kv_namespaces]])[\s\S]*?(id\s*=\s*)"[^"]*"/;
+      const newContent = content.replace(
+        kvPattern,
+        `$1\n$2"${ctx.kvId}"`
+      );
+      if (content !== newContent) {
+        content = newContent;
+        updated = true;
+        logInfo(`Updated wrangler.toml with KV namespace ID: ${ctx.kvId}`);
+      }
+    }
+
+    if (updated) {
+      writeFileSync(ctx.wranglerToml, content);
+    }
+  } catch (error: any) {
+    logWarning(`Could not update wrangler.toml: ${error.message}`);
+  }
 }
 
 // Check if command exists
@@ -425,8 +466,10 @@ async function main() {
 
     await loadConfiguration(ctx);
     await createDatabase(ctx);
+    await updateWranglerConfig(ctx); // Update database ID
     await runMigrations(ctx);
     await createKVNamespace(ctx);
+    await updateWranglerConfig(ctx); // Update KV namespace ID
     await createR2Bucket(ctx);
     await createPagesProject(ctx);
     await seedPOCUser(ctx);

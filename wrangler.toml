@@ -9,15 +9,17 @@ vars = { ENV = "production", AUTH_ENABLED = "true", MAX_ATTACHMENT_SIZE = "52428
 vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "false", APP_NAME = "Guru", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#a855f7" }
 
 # Database bindings (D1)
+# NOTE: database_id is auto-populated by setup script
 [[d1_databases]]
 binding = "DB"
-database_id = "785a9289-4c9d-4220-96c1-e54c2bdcd836"
+database_id = ""
 database_name = "icomment"
 
 # KV namespace bindings
+# NOTE: id is auto-populated by setup script
 [[kv_namespaces]]
 binding = "KV"
-id = "icomment-kv"
+id = ""
 
 # R2 bucket bindings
 [[r2_buckets]]
