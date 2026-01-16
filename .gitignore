@@ -49,3 +49,18 @@ Thumbs.db
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+bun.lockb
+
+# Wrangler
+.wrangler/
+wrangler.json
+
+# Environment files
+.env.local
+.env.*.local
+
+# Build output
+dist/
+
+# Logs
+*.log

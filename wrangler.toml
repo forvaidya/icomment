@@ -1,0 +1,24 @@
+name = "icomment"
+type = "service"
+main = "functions/_middleware.ts"
+compatibility_date = "2025-01-16"
+
+[build]
+command = "bun run build"
+cwd = "."
+
+# Default Environment (main branch)
+vars = { ENV = "development", AUTH_ENABLED = "false", MAX_ATTACHMENT_SIZE = "5242880", RATE_LIMIT_ENABLED = "false", APP_NAME = "BadTameez", APP_LOGO_URL = "/logo.svg", BRAND_COLOR = "#ff0000" }
+
+[[d1_databases]]
+binding = "DB"
+database_id = "icomment-db"
+database_name = "icomment"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "icomment-kv"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "icomment-attachments"
