@@ -1,18 +1,17 @@
 #!/usr/bin/env bun
 
 /**
- * Main Setup Script - Guru Comment System
+ * Setup Script - Guru Comment System
  *
- * This script automates the complete setup process:
- * - Check prerequisites (wrangler, git, bun)
- * - Create D1 database
- * - Run migrations
- * - Create KV namespace
- * - Create R2 bucket
- * - Seed initial POC user
- * - Generate setup summary
+ * Creates all Cloudflare resources needed for the project:
+ * - D1 database with migrations
+ * - KV namespace for sessions/cache
+ * - R2 bucket for attachments
+ * - Pages project
+ * - POC user in database
  *
  * Usage: bun run setup
+ * Idempotent: Safe to run multiple times
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -70,15 +69,14 @@ function logWarning(message: string) {
 interface SetupContext {
   projectRoot: string;
   wranglerToml: string;
-  packageJson: any;
   databaseName: string;
   databaseId: string | null;
   kvNamespace: string;
   kvId: string | null;
   r2Bucket: string;
   migrationsFile: string;
-  isLocalMode: boolean;
   pagesProjectName: string;
+  isLocalMode: boolean;
 }
 
 // Check if command exists
@@ -118,7 +116,6 @@ async function checkPrerequisites(): Promise<boolean> {
 
   let allGood = true;
 
-  // Check Bun
   if (commandExists('bun')) {
     const version = executeSilent('bun --version');
     logSuccess(`Bun installed: ${version}`);
@@ -127,7 +124,6 @@ async function checkPrerequisites(): Promise<boolean> {
     allGood = false;
   }
 
-  // Check Wrangler
   if (commandExists('wrangler')) {
     const version = executeSilent('wrangler --version');
     logSuccess(`Wrangler installed: ${version}`);
@@ -136,14 +132,12 @@ async function checkPrerequisites(): Promise<boolean> {
     allGood = false;
   }
 
-  // Check Git
   if (commandExists('git')) {
     logSuccess('Git installed');
   } else {
     logWarning('Git not found (optional)');
   }
 
-  // Check wrangler auth
   const wranglerConfigPath = path.join(os.homedir(), '.wrangler', 'config.toml');
   if (existsSync(wranglerConfigPath)) {
     logSuccess('Wrangler authenticated');
@@ -161,7 +155,6 @@ async function loadConfiguration(ctx: SetupContext): Promise<void> {
   try {
     const wranglerContent = readFileSync(ctx.wranglerToml, 'utf-8');
 
-    // Extract database name from wrangler.toml
     const dbNameMatch = wranglerContent.match(/database_name\s*=\s*"([^"]+)"/);
     const dbIdMatch = wranglerContent.match(/database_id\s*=\s*"([^"]+)"/);
 
@@ -173,13 +166,6 @@ async function loadConfiguration(ctx: SetupContext): Promise<void> {
     if (dbIdMatch) {
       ctx.databaseId = dbIdMatch[1];
       logSuccess(`Database ID: ${ctx.databaseId}`);
-    }
-
-    // Extract KV namespace
-    const kvNameMatch = wranglerContent.match(/id\s*=\s*"([^"]+)"/);
-    if (kvNameMatch) {
-      ctx.kvId = kvNameMatch[1];
-      logSuccess(`KV namespace ID: ${ctx.kvId}`);
     }
 
     logSuccess('Configuration loaded from wrangler.toml');
@@ -194,7 +180,6 @@ async function createDatabase(ctx: SetupContext): Promise<void> {
   logSection('Setting Up D1 Database');
 
   try {
-    // Check if database already exists
     logInfo('Checking for existing database...');
 
     try {
@@ -207,12 +192,10 @@ async function createDatabase(ctx: SetupContext): Promise<void> {
       // Database list command may fail if no databases exist
     }
 
-    // Create database
     logInfo(`Creating database: ${ctx.databaseName}`);
     const output = executeSilent(`wrangler d1 create ${ctx.databaseName}`);
     logSuccess(`Database created: ${ctx.databaseName}`);
 
-    // Extract database ID from output
     const idMatch = output.match(/id = "([^"]+)"/);
     if (idMatch) {
       ctx.databaseId = idMatch[1];
@@ -224,7 +207,7 @@ async function createDatabase(ctx: SetupContext): Promise<void> {
   }
 }
 
-// Run migrations
+// Run migrations (idempotent)
 async function runMigrations(ctx: SetupContext): Promise<void> {
   logSection('Running Database Migrations');
 
@@ -238,16 +221,30 @@ async function runMigrations(ctx: SetupContext): Promise<void> {
     const migrationContent = readFileSync(ctx.migrationsFile, 'utf-8');
     logSuccess(`Migration file loaded (${migrationContent.length} bytes)`);
 
+    logInfo('Checking if migrations already applied...');
+    const checkSQL = "SELECT name FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1;";
+    const dbCommand = `wrangler d1 execute ${ctx.databaseName} "${checkSQL}"`;
+
+    try {
+      if (ctx.isLocalMode) {
+        executeSilent(dbCommand);
+      } else {
+        executeSilent(dbCommand + ' --remote');
+      }
+      logWarning('Database schema already exists (migrations already applied)');
+      return;
+    } catch {
+      // Table doesn't exist, proceed with migrations
+    }
+
     logInfo('Running migrations...');
 
-    // For local development, use local database
     if (ctx.isLocalMode) {
       execute(
         `wrangler d1 execute ${ctx.databaseName} --file ${ctx.migrationsFile}`,
         false
       );
     } else {
-      // For remote, use --remote flag
       execute(
         `wrangler d1 execute ${ctx.databaseName} --file ${ctx.migrationsFile} --remote`,
         false
@@ -272,7 +269,6 @@ async function createKVNamespace(ctx: SetupContext): Promise<void> {
       const output = executeSilent(`wrangler kv:namespace create ${ctx.kvNamespace}`);
       logSuccess(`KV namespace created: ${ctx.kvNamespace}`);
 
-      // Extract ID
       const idMatch = output.match(/id = "([^"]+)"/);
       if (idMatch) {
         ctx.kvId = idMatch[1];
@@ -312,7 +308,7 @@ async function createR2Bucket(ctx: SetupContext): Promise<void> {
   }
 }
 
-// Create Cloudflare Pages project (non-interactive)
+// Create Pages project (non-interactive)
 async function createPagesProject(ctx: SetupContext): Promise<void> {
   logSection('Creating Cloudflare Pages Project');
 
@@ -320,18 +316,14 @@ async function createPagesProject(ctx: SetupContext): Promise<void> {
     logInfo(`Pages project name: ${ctx.pagesProjectName}`);
 
     try {
-      // Attempt to create Pages project non-interactively
-      // This prevents the interactive prompt from wrangler pages deploy
       logInfo('Creating Pages project...');
       executeSilent(`wrangler pages project create ${ctx.pagesProjectName} --production-branch main 2>&1 || true`);
       logSuccess(`Pages project created: ${ctx.pagesProjectName}`);
     } catch (error: any) {
-      // If creation fails (project might already exist), that's okay
-      // wrangler pages deploy will still work
       logWarning(`Pages project creation skipped (may already exist)`);
     }
   } catch (error: any) {
-    logWarning(`Pages project setup skipped: ${error.message}`);
+    logWarning(`Pages setup skipped: ${error.message}`);
   }
 }
 
@@ -363,36 +355,6 @@ async function seedPOCUser(ctx: SetupContext): Promise<void> {
   }
 }
 
-// Verify database schema
-async function verifyDatabase(ctx: SetupContext): Promise<void> {
-  logSection('Verifying Database Schema');
-
-  try {
-    logInfo('Checking tables...');
-
-    const tables = [
-      'users',
-      'discussions',
-      'comments',
-      'attachments',
-    ];
-
-    const checkSQL = "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'discussions', 'comments', 'attachments');";
-
-    const dbCommand = `wrangler d1 execute ${ctx.databaseName} "${checkSQL}"`;
-
-    if (ctx.isLocalMode) {
-      executeSilent(dbCommand);
-    } else {
-      executeSilent(dbCommand + ' --remote');
-    }
-
-    logSuccess('All required tables verified');
-  } catch (error: any) {
-    logWarning(`Database verification skipped: ${error.message}`);
-  }
-}
-
 // Generate setup summary
 function generateSummary(ctx: SetupContext): void {
   logSection('Setup Summary');
@@ -402,6 +364,7 @@ function generateSummary(ctx: SetupContext): void {
   log('cyan', `  • Database:      ${ctx.databaseName}${ctx.databaseId ? ` (${ctx.databaseId})` : ''}`);
   log('cyan', `  • KV Namespace:  ${ctx.kvNamespace}${ctx.kvId ? ` (${ctx.kvId})` : ''}`);
   log('cyan', `  • R2 Bucket:     ${ctx.r2Bucket}`);
+  log('cyan', `  • Pages Project: ${ctx.pagesProjectName}`);
 
   console.log();
   console.log('Quick Start:');
@@ -421,19 +384,6 @@ function generateSummary(ctx: SetupContext): void {
   log('bold', '     bun run admin:toggle    # Toggle admin status');
 
   console.log();
-  console.log('Deploy to Production:');
-  log('cyan', '  1. Build the project:');
-  log('bold', '     bun run build:all');
-
-  console.log();
-  log('cyan', '  2. Deploy to Cloudflare Pages (zero interaction):');
-  log('bold', '     bun run deploy');
-
-  console.log();
-  log('cyan', '  Or manually:');
-  log('bold', '     wrangler pages deploy ./dist');
-
-  console.log();
   logSuccess('Setup completed! Ready for development.');
   console.log();
 }
@@ -445,7 +395,6 @@ async function main() {
   const ctx: SetupContext = {
     projectRoot: process.cwd(),
     wranglerToml: path.join(process.cwd(), 'wrangler.toml'),
-    packageJson: JSON.parse(readFileSync(path.join(process.cwd(), 'package.json'), 'utf-8')),
     databaseName: 'icomment-db',
     databaseId: null,
     kvNamespace: 'icomment-kv',
@@ -457,37 +406,18 @@ async function main() {
   };
 
   try {
-    // Step 1: Check prerequisites
     const prereqOk = await checkPrerequisites();
     if (!prereqOk) {
       logWarning('Some prerequisites are missing. Installation may not work correctly.');
     }
 
-    // Step 2: Load configuration
     await loadConfiguration(ctx);
-
-    // Step 3: Create database
     await createDatabase(ctx);
-
-    // Step 4: Run migrations
     await runMigrations(ctx);
-
-    // Step 5: Create KV namespace
     await createKVNamespace(ctx);
-
-    // Step 6: Create R2 bucket
     await createR2Bucket(ctx);
-
-    // Step 7: Create Pages project (non-interactive)
     await createPagesProject(ctx);
-
-    // Step 8: Seed POC user
     await seedPOCUser(ctx);
-
-    // Step 9: Verify database
-    await verifyDatabase(ctx);
-
-    // Step 10: Generate summary
     generateSummary(ctx);
 
   } catch (error: any) {
@@ -503,5 +433,4 @@ async function main() {
   }
 }
 
-// Run main
 await main();
