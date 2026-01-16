@@ -3,12 +3,9 @@
 /**
  * Setup Script - Guru Comment System
  *
- * Creates all Cloudflare resources needed for the project:
- * - D1 database with migrations
- * - KV namespace for sessions/cache
- * - R2 bucket for attachments
- * - Pages project
- * - POC user in database
+ * Two-step idempotent setup:
+ * Step 1: Create D1 database, KV namespace, R2 bucket, and Pages project
+ * Step 2: Update wrangler.toml with actual IDs and run migrations/seeding
  *
  * Usage: bun run setup
  * Idempotent: Safe to run multiple times
@@ -79,48 +76,6 @@ interface SetupContext {
   isLocalMode: boolean;
 }
 
-// Helper to update wrangler.toml with database ID and KV namespace ID
-async function updateWranglerConfig(ctx: SetupContext): Promise<void> {
-  try {
-    let content = readFileSync(ctx.wranglerToml, 'utf-8');
-    let updated = false;
-
-    // Update database_id if available
-    if (ctx.databaseId) {
-      const newContent = content.replace(
-        /database_id\s*=\s*"[^"]*"/,
-        `database_id = "${ctx.databaseId}"`
-      );
-      if (content !== newContent) {
-        content = newContent;
-        updated = true;
-        logInfo(`Updated wrangler.toml with database ID: ${ctx.databaseId}`);
-      }
-    }
-
-    // Update KV namespace id if available
-    if (ctx.kvId) {
-      const kvPattern = /([[kv_namespaces]])[\s\S]*?(id\s*=\s*)"[^"]*"/;
-      const newContent = content.replace(
-        kvPattern,
-        `$1\n$2"${ctx.kvId}"`
-      );
-      if (content !== newContent) {
-        content = newContent;
-        updated = true;
-        logInfo(`Updated wrangler.toml with KV namespace ID: ${ctx.kvId}`);
-      }
-    }
-
-    if (updated) {
-      writeFileSync(ctx.wranglerToml, content);
-    }
-  } catch (error: any) {
-    logWarning(`Could not update wrangler.toml: ${error.message}`);
-  }
-}
-
-// Check if command exists
 function commandExists(command: string): boolean {
   try {
     execSync(`which ${command}`, { stdio: 'ignore' });
@@ -130,7 +85,6 @@ function commandExists(command: string): boolean {
   }
 }
 
-// Execute command and return output
 function execute(command: string, silent = false): string {
   try {
     return execSync(command, {
@@ -142,7 +96,6 @@ function execute(command: string, silent = false): string {
   }
 }
 
-// Execute command silently
 function executeSilent(command: string): string {
   try {
     return execSync(command, { encoding: 'utf-8', stdio: 'pipe' }).trim();
@@ -151,7 +104,6 @@ function executeSilent(command: string): string {
   }
 }
 
-// Check prerequisites
 async function checkPrerequisites(): Promise<boolean> {
   logSection('Checking Prerequisites');
 
@@ -183,86 +135,163 @@ async function checkPrerequisites(): Promise<boolean> {
   if (existsSync(wranglerConfigPath)) {
     logSuccess('Wrangler authenticated');
   } else {
-    logWarning('Wrangler not authenticated. Run: wrangler login');
+    logError('Wrangler not authenticated. Run: wrangler login');
+    allGood = false;
   }
 
   return allGood;
 }
 
-// Load wrangler.toml configuration
-async function loadConfiguration(ctx: SetupContext): Promise<void> {
-  logSection('Loading Configuration');
+// STEP 1: Create all Cloudflare resources (without wrangler bindings)
+async function createCloudflareResources(ctx: SetupContext): Promise<void> {
+  logSection('STEP 1: Creating Cloudflare Resources');
 
+  // Create D1 database
   try {
-    const wranglerContent = readFileSync(ctx.wranglerToml, 'utf-8');
-
-    const dbNameMatch = wranglerContent.match(/database_name\s*=\s*"([^"]+)"/);
-    const dbIdMatch = wranglerContent.match(/database_id\s*=\s*"([^"]+)"/);
-
-    if (dbNameMatch) {
-      ctx.databaseName = dbNameMatch[1];
-      logSuccess(`Database name: ${ctx.databaseName}`);
+    logInfo('Creating D1 database...');
+    const dbList = executeSilent('wrangler d1 list');
+    if (dbList.includes(ctx.databaseName)) {
+      logWarning(`Database "${ctx.databaseName}" already exists`);
+      const dbIdRegex = new RegExp(`│\\s*([a-f0-9\\-]+)\\s*│\\s*${ctx.databaseName}`);
+      const dbMatch = dbList.match(dbIdRegex);
+      if (dbMatch && dbMatch[1]) {
+        ctx.databaseId = dbMatch[1].trim();
+        logSuccess(`Loaded existing database ID: ${ctx.databaseId}`);
+      }
+    } else {
+      const output = executeSilent(`wrangler d1 create ${ctx.databaseName}`);
+      const idMatch = output.match(/id = "([^"]+)"/);
+      if (idMatch) {
+        ctx.databaseId = idMatch[1];
+        logSuccess(`Database created: ${ctx.databaseName} (${ctx.databaseId})`);
+      }
     }
-
-    if (dbIdMatch) {
-      ctx.databaseId = dbIdMatch[1];
-      logSuccess(`Database ID: ${ctx.databaseId}`);
-    }
-
-    logSuccess('Configuration loaded from wrangler.toml');
   } catch (error: any) {
-    logError(`Failed to load configuration: ${error.message}`);
+    logError(`Failed to create D1 database: ${error.message}`);
     throw error;
   }
-}
 
-// Create D1 database
-async function createDatabase(ctx: SetupContext): Promise<void> {
-  logSection('Setting Up D1 Database');
-
+  // Create KV namespace
   try {
-    logInfo('Checking for existing database...');
-
-    try {
-      const dbList = executeSilent('wrangler d1 list');
-      if (dbList.includes(ctx.databaseName)) {
-        logWarning(`Database "${ctx.databaseName}" already exists`);
-        return;
-      }
-    } catch {
-      // Database list command may fail if no databases exist
-    }
-
-    logInfo(`Creating database: ${ctx.databaseName}`);
-    const output = executeSilent(`wrangler d1 create ${ctx.databaseName}`);
-    logSuccess(`Database created: ${ctx.databaseName}`);
-
+    logInfo('Creating KV namespace...');
+    const output = executeSilent(`wrangler kv namespace create ${ctx.kvNamespace}`);
     const idMatch = output.match(/id = "([^"]+)"/);
     if (idMatch) {
-      ctx.databaseId = idMatch[1];
-      logInfo(`Database ID: ${ctx.databaseId}`);
+      ctx.kvId = idMatch[1];
+      logSuccess(`KV namespace created: ${ctx.kvNamespace} (${ctx.kvId})`);
     }
   } catch (error: any) {
-    logError(`Failed to create database: ${error.message}`);
-    throw error;
+    if (error.message.includes('already exists')) {
+      logWarning(`KV namespace "${ctx.kvNamespace}" already exists`);
+      try {
+        const listOutput = executeSilent('wrangler kv namespace list');
+        const kvIdRegex = new RegExp(`│\\s*([a-f0-9]+)\\s*│\\s*${ctx.kvNamespace}`);
+        const kvMatch = listOutput.match(kvIdRegex);
+        if (kvMatch && kvMatch[1]) {
+          ctx.kvId = kvMatch[1].trim();
+          logSuccess(`Loaded existing KV namespace ID: ${ctx.kvId}`);
+        }
+      } catch {
+        logWarning('Could not look up existing KV namespace ID');
+      }
+    } else {
+      logError(`Failed to create KV namespace: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Create R2 bucket
+  try {
+    logInfo('Creating R2 bucket...');
+    executeSilent(`wrangler r2 bucket create ${ctx.r2Bucket}`);
+    logSuccess(`R2 bucket created: ${ctx.r2Bucket}`);
+  } catch (error: any) {
+    if (error.message.includes('already exists')) {
+      logWarning(`R2 bucket "${ctx.r2Bucket}" already exists`);
+    } else {
+      logError(`Failed to create R2 bucket: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Create Pages project
+  try {
+    logInfo('Creating Pages project...');
+    executeSilent(
+      `wrangler pages project create ${ctx.pagesProjectName} --production-branch main 2>&1 || true`
+    );
+    logSuccess(`Pages project created: ${ctx.pagesProjectName}`);
+  } catch (error: any) {
+    logWarning(`Pages project creation skipped: ${error.message}`);
   }
 }
 
-// Run migrations (idempotent)
-async function runMigrations(ctx: SetupContext): Promise<void> {
-  logSection('Running Database Migrations');
+// STEP 2: Update wrangler.toml and run migrations/seeding
+async function configureAndMigrate(ctx: SetupContext): Promise<void> {
+  logSection('STEP 2: Configuring wrangler.toml & Running Migrations');
 
+  // Update wrangler.toml with actual IDs
   try {
-    if (!existsSync(ctx.migrationsFile)) {
-      logError(`Migration file not found: ${ctx.migrationsFile}`);
-      throw new Error('Migration file missing');
+    logInfo('Updating wrangler.toml with resource IDs...');
+    let content = readFileSync(ctx.wranglerToml, 'utf-8');
+
+    // Add D1 binding
+    if (ctx.databaseId && !content.includes(`database_id = "${ctx.databaseId}"`)) {
+      const d1Binding = `
+[[d1_databases]]
+binding = "DB"
+database_id = "${ctx.databaseId}"
+database_name = "${ctx.databaseName}"`;
+
+      // Remove old commented section if exists
+      content = content.replace(
+        /# Database bindings.*?\n# Will be uncommented by setup\.ts with actual database_id\n\n/s,
+        ''
+      );
+
+      // Add binding before R2 section
+      content = content.replace(
+        /# R2 bucket bindings/,
+        `# Database bindings (D1)${d1Binding}\n\n# R2 bucket bindings`
+      );
     }
 
-    logInfo('Reading migration file...');
-    const migrationContent = readFileSync(ctx.migrationsFile, 'utf-8');
-    logSuccess(`Migration file loaded (${migrationContent.length} bytes)`);
+    // Add KV binding
+    if (ctx.kvId && !content.includes(`id = "${ctx.kvId}"`)) {
+      const kvBinding = `
+[[kv_namespaces]]
+binding = "KV"
+id = "${ctx.kvId}"`;
 
-    logInfo('Checking if migrations already applied...');
+      // Remove old commented section if exists
+      content = content.replace(
+        /# KV namespace bindings.*?\n# Will be uncommented by setup\.ts with actual namespace id\n\n/s,
+        ''
+      );
+
+      // Add binding before R2 section
+      content = content.replace(
+        /# R2 bucket bindings/,
+        `# KV namespace bindings (Cache)${kvBinding}\n\n# R2 bucket bindings`
+      );
+    }
+
+    writeFileSync(ctx.wranglerToml, content);
+    logSuccess('Updated wrangler.toml with resource IDs');
+  } catch (error: any) {
+    logError(`Failed to update wrangler.toml: ${error.message}`);
+    throw error;
+  }
+
+  // Run migrations
+  try {
+    logInfo('Running database migrations...');
+
+    if (!existsSync(ctx.migrationsFile)) {
+      throw new Error(`Migration file not found: ${ctx.migrationsFile}`);
+    }
+
+    // Check if already migrated
     const checkSQL = "SELECT name FROM sqlite_master WHERE type='table' AND name='users' LIMIT 1;";
     const dbCommand = `wrangler d1 execute ${ctx.databaseName} "${checkSQL}"`;
 
@@ -273,118 +302,31 @@ async function runMigrations(ctx: SetupContext): Promise<void> {
         executeSilent(dbCommand + ' --remote');
       }
       logWarning('Database schema already exists (migrations already applied)');
-      return;
     } catch {
       // Table doesn't exist, proceed with migrations
-    }
+      const migrateCmd = ctx.isLocalMode
+        ? `wrangler d1 execute ${ctx.databaseName} --file ${ctx.migrationsFile}`
+        : `wrangler d1 execute ${ctx.databaseName} --file ${ctx.migrationsFile} --remote`;
 
-    logInfo('Running migrations...');
-
-    try {
-      if (ctx.isLocalMode) {
-        execute(
-          `wrangler d1 execute ${ctx.databaseName} --file ${ctx.migrationsFile}`,
-          false
-        );
-      } else {
-        execute(
-          `wrangler d1 execute ${ctx.databaseName} --file ${ctx.migrationsFile} --remote`,
-          false
-        );
+      try {
+        execute(migrateCmd, false);
+        logSuccess('Migrations completed successfully');
+      } catch {
+        logSuccess('Migrations applied successfully');
       }
-      logSuccess('Migrations completed successfully');
-    } catch (innerError: any) {
-      // Migrations may succeed even if the output looks like an error
-      // D1 execute returns success messages in stdout
-      logSuccess('Migrations applied successfully');
     }
   } catch (error: any) {
     logError(`Failed to run migrations: ${error.message}`);
     throw error;
   }
-}
 
-// Create KV namespace
-async function createKVNamespace(ctx: SetupContext): Promise<void> {
-  logSection('Setting Up KV Namespace');
-
+  // Seed POC user
   try {
-    logInfo(`Creating KV namespace: ${ctx.kvNamespace}`);
-
-    try {
-      const output = executeSilent(`wrangler kv namespace create ${ctx.kvNamespace}`);
-      logSuccess(`KV namespace created: ${ctx.kvNamespace}`);
-
-      const idMatch = output.match(/id = "([^"]+)"/);
-      if (idMatch) {
-        ctx.kvId = idMatch[1];
-        logInfo(`KV namespace ID: ${ctx.kvId}`);
-      }
-    } catch (error: any) {
-      if (error.message.includes('already exists')) {
-        logWarning(`KV namespace "${ctx.kvNamespace}" already exists`);
-      } else {
-        throw error;
-      }
-    }
-  } catch (error: any) {
-    logWarning(`KV namespace setup skipped: ${error.message}`);
-  }
-}
-
-// Create R2 bucket
-async function createR2Bucket(ctx: SetupContext): Promise<void> {
-  logSection('Setting Up R2 Bucket');
-
-  try {
-    logInfo(`Creating R2 bucket: ${ctx.r2Bucket}`);
-
-    try {
-      executeSilent(`wrangler r2 bucket create ${ctx.r2Bucket}`);
-      logSuccess(`R2 bucket created: ${ctx.r2Bucket}`);
-    } catch (error: any) {
-      if (error.message.includes('already exists')) {
-        logWarning(`R2 bucket "${ctx.r2Bucket}" already exists`);
-      } else {
-        throw error;
-      }
-    }
-  } catch (error: any) {
-    logWarning(`R2 bucket setup skipped: ${error.message}`);
-  }
-}
-
-// Create Pages project (non-interactive)
-async function createPagesProject(ctx: SetupContext): Promise<void> {
-  logSection('Creating Cloudflare Pages Project');
-
-  try {
-    logInfo(`Pages project name: ${ctx.pagesProjectName}`);
-
-    try {
-      logInfo('Creating Pages project...');
-      executeSilent(`wrangler pages project create ${ctx.pagesProjectName} --production-branch main 2>&1 || true`);
-      logSuccess(`Pages project created: ${ctx.pagesProjectName}`);
-    } catch (error: any) {
-      logWarning(`Pages project creation skipped (may already exist)`);
-    }
-  } catch (error: any) {
-    logWarning(`Pages setup skipped: ${error.message}`);
-  }
-}
-
-// Seed initial POC user
-async function seedPOCUser(ctx: SetupContext): Promise<void> {
-  logSection('Seeding Initial POC User');
-
-  try {
+    logInfo('Seeding initial POC user...');
     const userId = 'poc-user-' + Date.now();
     const seedFile = path.join(ctx.projectRoot, '.tmp_seed.sql');
     const insertUserSQL = `INSERT INTO users (id, username, type, email, is_admin, created_at, updated_at) VALUES ('${userId}', 'mahesh.local', 'local', 'mahesh@local', true, datetime('now'), datetime('now')) ON CONFLICT(username) DO NOTHING;`;
 
-    logInfo('Inserting POC user (mahesh.local)...');
-
-    // Write SQL to temp file
     const fs = require('fs');
     fs.writeFileSync(seedFile, insertUserSQL);
 
@@ -398,7 +340,6 @@ async function seedPOCUser(ctx: SetupContext): Promise<void> {
     } catch (error: any) {
       logWarning(`POC user seeding skipped (may already exist): ${error.message}`);
     } finally {
-      // Cleanup temp file
       if (fs.existsSync(seedFile)) {
         fs.unlinkSync(seedFile);
       }
@@ -408,7 +349,6 @@ async function seedPOCUser(ctx: SetupContext): Promise<void> {
   }
 }
 
-// Generate setup summary
 function generateSummary(ctx: SetupContext): void {
   logSection('Setup Summary');
 
@@ -441,14 +381,13 @@ function generateSummary(ctx: SetupContext): void {
   console.log();
 }
 
-// Main setup function
 async function main() {
   log('bold', `\n${icons.flower} Guru Comment System - Setup\n`);
 
   const ctx: SetupContext = {
     projectRoot: process.cwd(),
     wranglerToml: path.join(process.cwd(), 'wrangler.toml'),
-    databaseName: 'icomment-db',
+    databaseName: 'icomment',
     databaseId: null,
     kvNamespace: 'icomment-kv',
     kvId: null,
@@ -464,17 +403,13 @@ async function main() {
       logWarning('Some prerequisites are missing. Installation may not work correctly.');
     }
 
-    await loadConfiguration(ctx);
-    await createDatabase(ctx);
-    await updateWranglerConfig(ctx); // Update database ID
-    await runMigrations(ctx);
-    await createKVNamespace(ctx);
-    await updateWranglerConfig(ctx); // Update KV namespace ID
-    await createR2Bucket(ctx);
-    await createPagesProject(ctx);
-    await seedPOCUser(ctx);
-    generateSummary(ctx);
+    // Step 1: Create all resources
+    await createCloudflareResources(ctx);
 
+    // Step 2: Configure and migrate
+    await configureAndMigrate(ctx);
+
+    generateSummary(ctx);
   } catch (error: any) {
     console.log();
     logError(`Setup failed: ${error.message}`);
