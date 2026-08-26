@@ -6,7 +6,7 @@ compatibility_date = "2024-12-11"
 [[d1_databases]]
 binding = "DB"
 database_name = "psychomments"
-database_id = "YOUR_DATABASE_ID"
+database_id = "87cd2905-4e9b-403c-b34a-b04addc07c98"
 
 # CF Access Configuration
 # The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.
