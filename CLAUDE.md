@@ -1,38 +1,35 @@
-# CLAUDE.md — Step 01: Worker + CF Access
+# CLAUDE.md — Step 02: D1 CRUD
 
 ## What this step adds
 
-- Bare Cloudflare Worker
-- CF Access identity gate (email/OTP)
-- JWT verification in Worker code
-- Single endpoint that echoes JWT claims in the response
+- D1 database with schema: `users`, `boards`, `topics`, `general_messages`
+- Raw fetch-handler endpoints for D1 operations (no router yet)
+- CRUD for `general_messages` and `boards` only
 
 ## What is explicitly NOT in this step
 
-- Database (D1)
-- Router framework (Hono comes in step 03)
-- Persistent storage
-- Message endpoints or business logic
-- WebSocket or Durable Objects
-- File uploads (R2)
+- Hono router (comes in step 03)
+- JWT extraction or user identity binding to requests
+- Topic messages (go to Durable Objects in step 04)
+- Reactions (queued for later)
+- WebSocket or real-time messaging
+- File attachments or R2 integration
 
 ## Done condition
 
-- Deployed Worker URL requires CF Access login (unauthenticated requests blocked)
-- Authenticated requests show JWT claims visible in response
+- POST and GET `/general_messages` work via curl
+- POST and GET `/boards` work via curl
+- Full CRUD operations confirmed for both endpoints
 
 ## Key decisions locked in
 
-- Cloudflare Workers as compute runtime
-- CF Access as identity gate (no external provider)
-- JWT-based request verification
+- Workers + CF Access from step 01
+- JWT available in request context but not extracted yet
+- D1 as owner of relational data (users, boards, topics, general_messages)
 
 ## What to do next
 
-1. Create a new Worker project
-2. Gate it behind CF Access:
-   - Use wrangler for what it supports (environment bindings, policy setup)
-   - Manually configure in Cloudflare dashboard: email whitelists, policy refinements (document the steps)
-3. Add JWT verification code in Worker (extract and validate CF Access JWT)
-4. Return JWT claims in response for testing
-5. Deploy and test with curl
+1. Design and create D1 schema (migrations for users, boards, topics, general_messages)
+2. Create raw fetch handlers for `/general_messages` and `/boards` endpoints
+3. Test locally with Wrangler and curl
+4. Deploy and verify against live D1
