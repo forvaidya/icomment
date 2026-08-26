@@ -2,37 +2,36 @@
 
 ## What this step adds
 
-- Hono router as the primary HTTP handler (refactor from raw fetch)
+- Hono as the HTTP router
+- Move all D1 endpoints from step 02 into Hono routes
 - JWT verification middleware applied to all routes
-- User identity extraction (sub, email) from JWT and attachment to request context
-- All D1 endpoints from step 02 moved into Hono routes
-- Consistent error handling and response format
+- Extract user identity (`sub`, `email`) from JWT and attach to request context
 
 ## What is explicitly NOT in this step
 
-- Durable Objects or topic-specific logic
+- Durable Objects or topic message logic
 - WebSocket support
 - File uploads or R2
-- Business logic beyond D1 CRUD
-- Rate limiting or advanced middleware
+- Changes to D1 schema or new tables
+- Advanced middleware features
 
 ## Done condition
 
-1. All routes are defined in Hono
-2. Unauthenticated requests are rejected by middleware (401)
-3. Authenticated requests have user identity (sub, email) attached to context
-4. All step 02 CRUD operations still work, now through Hono
-5. Response format is consistent across endpoints
+- All routes go through Hono
+- Unauthenticated requests are rejected (all routes protected)
+- User identity (`sub`, `email`) is extracted and accessible in route handlers
+- All step 02 CRUD operations still work
 
-## Key decisions locked in (from previous steps)
+## Key decisions locked in
 
 - Workers + CF Access + JWT as identity mechanism
-- D1 schema and board/message CRUD working
-- TypeScript + Bun for development
+- D1 schema working (users, boards, topics, general_messages)
+- User identity available on every request
 
 ## What to do next
 
-1. Refactor existing endpoints into Hono route handlers
-2. Add JWT extraction and verification middleware
-3. Attach user identity to request context for use in handlers
-4. Test all routes with authenticated requests
+1. Introduce Hono router to the Worker
+2. Move existing fetch handlers into Hono route definitions
+3. Add JWT verification middleware (all routes protected)
+4. Extract `sub` and `email` from JWT and attach to request context
+5. Test all routes with authenticated requests

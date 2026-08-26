@@ -4,6 +4,7 @@
 > No code. No implementation detail. Pass this to Claude Code to generate
 > per-step CLAUDE.md files for each milestone branch.
 
+
 ---
 
 ## What I am building
@@ -12,6 +13,9 @@ A topic-based message board running entirely on the Cloudflare Workers
 ecosystem. The goal is **ecosystem learning**, not a production product.
 UI exists only to drive and verify backend behaviour. Features and UX are
 incidental.
+
+Appname: psychomments
+
 
 ---
 

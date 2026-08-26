@@ -2,37 +2,34 @@
 
 ## What this step adds
 
-- D1 database with schema: `users`, `boards`, `topics`, `general_messages`, `reactions`
-- Raw fetch-handler endpoints for D1 operations (no Hono router yet, or minimal routing)
-- CRUD operations for `general_messages` and `boards` only
-- No authentication checks yet (or pass through from step 01)
+- D1 database with schema: `users`, `boards`, `topics`, `general_messages`
+- Raw fetch-handler endpoints for D1 operations (no router yet)
+- CRUD for `general_messages` and `boards` only
 
 ## What is explicitly NOT in this step
 
-- Hono router refactoring (raw handlers only)
-- JWT extraction and user identity binding to requests
-- Topic messages (those go to Durable Objects in step 04)
+- Hono router (comes in step 03)
+- JWT extraction or user identity binding to requests
+- Topic messages (go to Durable Objects in step 04)
+- Reactions (queued for later)
 - WebSocket or real-time messaging
 - File attachments or R2 integration
-- Middleware beyond basic request routing
 
 ## Done condition
 
-1. D1 database is created and deployed
-2. POST to `/general_messages` stores a message in D1
-3. GET from `/general_messages` retrieves stored messages (with pagination or limits)
-4. POST/GET to `/boards` work for CRUD
-5. All operations tested via curl with raw body payloads
+- POST and GET `/general_messages` work via curl
+- POST and GET `/boards` work via curl
+- Full CRUD operations confirmed for both endpoints
 
-## Key decisions locked in (from previous steps)
+## Key decisions locked in
 
-- Workers + CF Access as identity gate
-- JWT claims available in request context
-- Hono or raw fetch handlers for routing
+- Workers + CF Access from step 01
+- JWT available in request context but not extracted yet
+- D1 as owner of relational data (users, boards, topics, general_messages)
 
 ## What to do next
 
-1. Design and write D1 schema (migrations)
-2. Create raw fetch handlers for board and general message CRUD
+1. Design and create D1 schema (migrations for users, boards, topics, general_messages)
+2. Create raw fetch handlers for `/general_messages` and `/boards` endpoints
 3. Test locally with Wrangler and curl
 4. Deploy and verify against live D1

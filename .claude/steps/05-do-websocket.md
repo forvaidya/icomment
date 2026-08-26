@@ -2,38 +2,35 @@
 
 ## What this step adds
 
-- WebSocket upgrade handler in the Worker
-- DO accepts WebSocket connections from clients
-- DO holds connected clients in memory
-- New messages trigger broadcasts to all connected clients
-- Read cursors or last-seen tracking per user (optional, depending on scope)
+- WebSocket upgrade handler in Worker for topic connection
+- DO accepts and holds WebSocket connections from clients in memory
+- Broadcast new messages to all connected clients on a topic
 
 ## What is explicitly NOT in this step
 
 - File attachments or R2 uploads
-- Advanced features like message reactions via WebSocket
-- Rate limiting on messages
-- Message history over WebSocket (history endpoint stays REST)
-- Reconnection or backoff logic (client responsibility)
+- Advanced features (reactions, read cursors, etc.)
+- Rate limiting
+- Message history over WebSocket (stay on REST for history)
+- Client-side reconnection logic
 
 ## Done condition
 
-1. GET `/topics/:id/ws` upgrades to WebSocket
-2. Multiple browser tabs on the same topic see each other's messages in real-time
-3. New messages posted via REST are broadcasted to WebSocket clients
-4. Disconnected clients are cleaned up from memory
-5. Messages are not lost if a client disconnects mid-stream
+- GET `/topics/:id/ws` upgrades to WebSocket
+- Two browser tabs on the same topic see each other's messages live
+- New messages posted via REST are broadcasted to WebSocket clients
+- Disconnected clients cleaned up from DO memory
 
-## Key decisions locked in (from previous steps)
+## Key decisions locked in
 
 - DO storage for topic messages (step 04)
-- User identity from JWT
-- REST and WebSocket coexist on the same topic
+- User identity from JWT context
+- REST and WebSocket coexist on same topic
 
 ## What to do next
 
-1. Add WebSocket upgrade handler in the Worker
-2. Implement WebSocket support in the Durable Object class
-3. Add in-memory client tracking (Map of connections)
+1. Add WebSocket upgrade route in Hono worker (GET `/topics/:id/ws`)
+2. Implement WebSocket handling in Durable Object class
+3. Add in-memory client tracking (connections map in DO)
 4. Implement broadcast logic when new messages arrive
-5. Test with two browser tabs simultaneously
+5. Test with two browser tabs on same topic
