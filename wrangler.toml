@@ -2,6 +2,12 @@ name = "psychomments"
 main = "src/index.ts"
 compatibility_date = "2024-12-11"
 
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "psychomments"
+database_id = "YOUR_DATABASE_ID"
+
 # CF Access Configuration
 # The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.
 # Email whitelisting and access policies must be configured manually in Cloudflare Dashboard.
