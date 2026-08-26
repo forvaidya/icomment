@@ -1,0 +1,7 @@
+name = "psychomments"
+main = "src/index.ts"
+compatibility_date = "2024-12-11"
+
+# CF Access Configuration
+# The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.
+# Email whitelisting and access policies must be configured manually in Cloudflare Dashboard.
