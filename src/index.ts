@@ -530,8 +530,14 @@ app.get('/topics', async (c) => {
   const isAdmin = c.get('isAdmin');
   const userEmail = c.get('userEmail');
 
-  const result = await db.prepare('SELECT * FROM topics ORDER BY created_at DESC').all();
-  const topics = result.results || [];
+  let topics: any[] = [];
+  try {
+    const result = await db.prepare('SELECT * FROM topics ORDER BY created_at DESC').all();
+    topics = result.results || [];
+  } catch (err: any) {
+    console.error('Failed to fetch topics:', err);
+    return c.text('Error: ' + err.message, 500);
+  }
 
   const html = `
     <!DOCTYPE html>
