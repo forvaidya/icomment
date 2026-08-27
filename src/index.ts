@@ -65,8 +65,11 @@ app.get('/', async (c) => {
       <title>Psychomments - Worker is Running</title>
       <style>
         body { font-family: sans-serif; padding: 40px; background: #f5f5f5; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h1 { color: #333; }
+        h1 { color: #333; margin: 0; }
+        .edit-link { text-decoration: none; background: #007bff; color: white; padding: 8px 16px; border-radius: 4px; font-size: 14px; }
+        .edit-link:hover { background: #0056b3; }
         .status { background: #d4edda; padding: 15px; border-radius: 4px; margin: 20px 0; }
         .welcome { background: #cfe2ff; padding: 15px; border-radius: 4px; margin: 20px 0; font-weight: bold; }
         .jwt-info { background: #e7f3ff; padding: 15px; border-radius: 4px; margin: 20px 0; font-family: monospace; font-size: 12px; }
@@ -77,7 +80,10 @@ app.get('/', async (c) => {
     </head>
     <body>
       <div class="container">
-        <h1>✅ Psychomments Worker is Running</h1>
+        <div class="header">
+          <h1>✅ Psychomments Worker</h1>
+          ${userEmail ? `<a href="/profile/edit" class="edit-link">Edit Profile</a>` : ''}
+        </div>
         <p style="font-size: 20px; margin: 15px 0;">🐱 Jolly the cat</p>
 
         <div class="welcome">
@@ -311,6 +317,149 @@ app.post('/users/:id/avatar', async (c) => {
 
   const updated = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
   return c.json(updated, 200);
+});
+
+// Profile edit UI (requires authentication)
+app.get('/profile/edit', async (c) => {
+  const userEmail = c.get('userEmail');
+
+  if (!userEmail) {
+    return c.html('<h1>Not Authenticated</h1><p>Please log in via CF Access</p>');
+  }
+
+  const db = c.env.DB;
+  let user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(userEmail).first();
+
+  if (!user) {
+    const newId = crypto.randomUUID();
+    await db
+      .prepare('INSERT INTO users (id, email) VALUES (?, ?)')
+      .bind(newId, userEmail)
+      .run();
+    user = { id: newId, email: userEmail, username: null, bio: null, profile_image_url: null };
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Edit Profile</title>
+      <style>
+        body { font-family: sans-serif; padding: 40px; background: #f5f5f5; }
+        .container { max-width: 400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; }
+        h1 { color: #333; }
+        .form-group { margin: 20px 0; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; }
+        textarea { resize: vertical; min-height: 100px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #0056b3; }
+        .back-link { color: #007bff; text-decoration: none; }
+        .back-link:hover { text-decoration: underline; }
+        .email-display { background: #f0f0f0; padding: 10px; border-radius: 4px; margin-bottom: 20px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Edit Profile</h1>
+        <a href="/" class="back-link">← Back</a>
+
+        <div class="email-display">
+          <strong>Email:</strong> ${user.email}
+        </div>
+
+        <form method="POST" action="/profile/edit">
+          <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" value="${user.username || ''}" placeholder="Your username">
+          </div>
+
+          <div class="form-group">
+            <label for="bio">Bio:</label>
+            <textarea id="bio" name="bio" placeholder="Tell us about yourself">${user.bio || ''}</textarea>
+          </div>
+
+          <button type="submit">Save Profile</button>
+        </form>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return c.html(html);
+});
+
+app.post('/profile/edit', async (c) => {
+  const userEmail = c.get('userEmail');
+
+  if (!userEmail) {
+    return c.html('<h1>Not Authenticated</h1>');
+  }
+
+  const db = c.env.DB;
+  const form = await c.req.formData();
+  const username = form.get('username') as string | null;
+  const bio = form.get('bio') as string | null;
+
+  try {
+    const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(userEmail).first();
+
+    if (!user) {
+      return c.html('<h1>User not found</h1>');
+    }
+
+    await db
+      .prepare('UPDATE users SET username = ?, bio = ? WHERE id = ?')
+      .bind(username || null, bio || null, user.id)
+      .run();
+
+    return c.html(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Profile Updated</title>
+        <style>
+          body { font-family: sans-serif; padding: 40px; background: #f5f5f5; }
+          .container { max-width: 400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; text-align: center; }
+          .success { background: #d4edda; padding: 15px; border-radius: 4px; margin: 20px 0; color: #155724; }
+          a { color: #007bff; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>✅ Profile Updated</h1>
+          <div class="success">
+            <p>Your profile has been saved successfully!</p>
+          </div>
+          <p><a href="/">← Back to Home</a></p>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (err: any) {
+    return c.html(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Error</title>
+        <style>
+          body { font-family: sans-serif; padding: 40px; background: #f5f5f5; }
+          .container { max-width: 400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; text-align: center; }
+          .error { background: #f8d7da; padding: 15px; border-radius: 4px; margin: 20px 0; color: #721c24; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>❌ Error</h1>
+          <div class="error">
+            <p>${err.message?.includes('UNIQUE') ? 'Username already in use' : 'Failed to update profile'}</p>
+          </div>
+          <p><a href="/profile/edit">← Try again</a></p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
 });
 
 export default app;
