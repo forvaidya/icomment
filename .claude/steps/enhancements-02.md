@@ -55,10 +55,27 @@ Features for logged-in users. Parked after Steps 01-06 complete.
 
 ## Technical Considerations
 
+### Topic Chat (Simple)
 **WebSocket routing** (Durable Objects)
 - Each topic = one DO instance
-- Broadcast to connected clients
+- Broadcast to all connected clients
 - Fallback to polling if WS fails
+
+### 1:1 Chat (Complex — new patterns)
+**User routing & presence**
+- Service discovery: which DO/server is user on?
+- KV-based session registry (user → connection ID)
+- Presence heartbeat (keep-alive)
+
+**Offline delivery**
+- Queues for pending messages
+- Push/email notifications
+- Message durability until read
+
+**State coordination**
+- Both users' DOs must sync (or use relay server)
+- Exactly-once delivery (dedup on retry)
+- Read receipts (bidirectional confirmation)
 
 **Notification strategy**
 - Push notifications (browser)
