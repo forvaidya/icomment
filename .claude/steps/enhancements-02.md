@@ -1,102 +1,80 @@
-# Enhancements — Real-Time Chat (Phase 2)
+# Enhancements — Real-Time Global Chat (Phase 2)
 
-Features for logged-in users. Parked after Steps 01-06 complete.
+Single shared chat space for all authenticated users. Simple, scalable.
 
-## Real-Time Chat Features
+## Global Real-Time Chat
 
-### Core
-**Live messaging in topics**
-- WebSocket connection per topic (via Durable Objects)
-- Message delivery to all connected participants
-- Delivery status (sent, received, read)
-- Timestamp & user attribution
+**Core:**
+- One chat space (everyone sees everything)
+- Live messaging via WebSocket (Durable Objects)
+- User presence (who's online now)
+- Message attribution (name, timestamp, avatar)
+- Message history (load past messages)
 
-**User presence**
-- Show who's online in a topic
-- Join/leave notifications
-- Last seen timestamp
+**Features:**
+- Typing indicators ("Mahesh is typing...")
+- Message reactions (emoji)
+- Search message history
+- User status (online, away, idle)
 
-### Engagement
-**Typing indicators**
-- Show "X is typing..." when user has unsent text
-- Clear after 3s inactivity
+## Why This Over Topic+1:1?
 
-**Message reactions**
-- Emoji reactions on messages
-- React/unreact via WebSocket
-- Reaction count per emoji
+**Simpler architecture:**
+- One Durable Object instance (no routing)
+- Broadcast to all connected users
+- No user-to-user routing complexity
+- No offline delivery management
+- No distributed state coordination
 
-**Pinned messages**
-- Mark important messages in topic
-- Searchable pin history
+**Learning focus:**
+- DO broadcast patterns
+- WebSocket real-time delivery
+- Presence management (KV-based)
+- Message persistence (D1)
+- Scaling (sharding if needed)
 
-### Direct Messaging
-**1-on-1 chats (Private conversations)**
-- Separate namespace from topic messages
-- Private to both users (only they can see)
-- Real-time delivery + notifications
-- Examples: personal invites, casual asks ("Are you willing to join Goa trip this weekend?"), off-topic chat
+**Better for learning:**
+- Focus on real-time patterns, not distributed messaging
+- Clean DO lifecycle (connect/disconnect)
+- Pub/sub simplified (all subscribers = all online users)
 
-**Group DMs**
-- Create group chat (3+ users)
-- Invite/remove users
-- Leave group option
+## Architecture
 
-### Search & History
-**Message search**
-- Full-text search within topic
-- Filter by user, date range, reaction
-- Search across all DMs
+**Durable Object (global-chat):**
+```
+User 1 ──┐
+User 2 ──┼─→ DO Instance ←─→ WebSocket Broadcast
+User 3 ──┤
+User 4 ──┘
+```
 
-**Chat history**
-- Load older messages (pagination)
-- Archive/mute topics
-- Export chat history
+**Message flow:**
+1. User sends message via WebSocket
+2. DO receives, stores in D1
+3. DO broadcasts to all connected users
+4. Frontend updates chat UI
 
-## Technical Considerations
+**Presence:**
+- KV tracks: user → connection timestamp
+- Heartbeat every 30s
+- Cleanup on disconnect
 
-### Topic Chat (Simple)
-**WebSocket routing** (Durable Objects)
-- Each topic = one DO instance
-- Broadcast to all connected clients
-- Fallback to polling if WS fails
+## Technical Stack
 
-### 1:1 Chat (Complex — new patterns)
-**User routing & presence**
-- Service discovery: which DO/server is user on?
-- KV-based session registry (user → connection ID)
-- Presence heartbeat (keep-alive)
+**New:**
+- Durable Objects (broadcast hub)
+- WebSocket (real-time transport)
 
-**Offline delivery**
-- Queues for pending messages
-- Push/email notifications
-- Message durability until read
-
-**State coordination**
-- Both users' DOs must sync (or use relay server)
-- Exactly-once delivery (dedup on retry)
-- Read receipts (bidirectional confirmation)
-
-**Notification strategy**
-- Push notifications (browser)
-- Email digests (if user offline)
-- In-app badges
-
-**Storage**
-- Messages stay in D1 (queryable)
-- Real-time state in DO (transient)
-- Presence tracked in KV (session-based)
-
-**Rate limiting**
-- Messages/min per user per topic
-- Typing indicator throttle
-- Reaction spam prevention
+**Existing:**
+- D1 (message persistence)
+- KV (presence tracking)
+- Workers (HTTP → WS gateway)
 
 ## Timeline
-- **Step 07**: DM infrastructure
-- **Step 08**: Search + history
-- **Step 09**: Reactions + engagement features
+- **Step 05**: Build global real-time chat (DO + WebSocket)
+- **Step 06**: Polish (typing indicators, presence, history)
+- **Optional**: Sharding if message throughput scales
 
 ---
 
-**Dependencies**: Steps 01-06 (WebSocket + DO + auth)
+**Rationale:** Focus on core real-time patterns without distributed routing complexity. 1:1/topics are a separate problem (Phase 3+).
