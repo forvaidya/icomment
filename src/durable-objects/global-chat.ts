@@ -13,14 +13,17 @@ export class GlobalChat {
   async fetch(req: any): Promise<any> {
     const url = new URL(req.url);
 
-    // WebSocket upgrade
-    if (req.headers.get('upgrade') === 'websocket') {
+    // WebSocket upgrade (check both cases)
+    const upgradeHeader = req.headers.get('upgrade') || req.headers.get('Upgrade');
+    if (upgradeHeader === 'websocket') {
       try {
         // Create WebSocket pair (client for browser, server for DO)
         const pair = new (globalThis as any).WebSocketPair();
 
-        // Accept connection on server side
+        // Accept connection on server side (only call once)
         pair[1].accept();
+
+        // Add handlers (don't call accept again)
         this.handleWebSocket(pair[1]);
 
         // Return client side to browser
@@ -43,7 +46,6 @@ export class GlobalChat {
 
   private handleWebSocket(ws: any) {
     try {
-      ws.accept();
       this.connections.add(ws);
 
       // Message handler

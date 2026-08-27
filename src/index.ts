@@ -718,19 +718,15 @@ app.post('/topics/:id/comments', async (c) => {
       .bind(id, topicId, userEmail, content, timestamp)
       .run();
 
-    // Notify DO to broadcast
     const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
-    try {
-      const chatDo = chat.get('global-chat');
-      await chatDo.fetch(
-        new Request('http://internal/broadcast', {
-          method: 'POST',
-          body: JSON.stringify({ type: 'new-comment', data: comment }),
-        })
-      );
-    } catch (err) {
-      console.error('Failed to notify DO:', err);
-    }
+
+    // Notify DO to broadcast (fire and forget, don't await)
+    chat.get('global-chat').fetch(
+      new Request('http://internal/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'new-comment', data: comment }),
+      })
+    ).catch((err: any) => console.error('DO broadcast error:', err));
 
     return c.json(comment, 201);
   } catch (err: any) {
