@@ -19,6 +19,16 @@ preview_id = "42aac3233a734f66835313dd75ed887c"
 binding = "R2_PROFILES"
 bucket_name = "psychomments-profiles"
 
+# Durable Object Binding for Real-Time Chat
+[[durable_objects.bindings]]
+name = "CHAT"
+class_name = "GlobalChat"
+
+# Durable Object Migration
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GlobalChat"]
+
 # CF Access Configuration
 # The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.
 # Email whitelisting and access policies must be configured manually in Cloudflare Dashboard.

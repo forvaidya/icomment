@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { GlobalChat } from './durable-objects/global-chat';
 
 type Env = {
   Variables: {
@@ -10,6 +11,7 @@ type Env = {
     DB: any;
     KV_ADMIN: any;
     R2_PROFILES: any;
+    CHAT: any;
     ENVIRONMENT?: string;
   };
 };
@@ -462,4 +464,117 @@ app.post('/profile/edit', async (c) => {
   }
 });
 
+// Topics endpoints
+app.post('/topics', async (c) => {
+  const isAdmin = c.get('isAdmin');
+  const userEmail = c.get('userEmail');
+
+  if (!isAdmin) {
+    return c.json({ error: 'Only admins can create topics' }, 403);
+  }
+
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const db = c.env.DB;
+  const body = await c.req.json();
+  const { title, description } = body;
+
+  if (!title) {
+    return c.json({ error: 'Title required' }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare('INSERT INTO topics (id, board_id, title, created_by) VALUES (?, ?, ?, ?)')
+    .bind(id, 'default', title, userEmail)
+    .run();
+
+  return c.json({ id, title, description, created_at: new Date().toISOString() }, 201);
+});
+
+app.get('/topics', async (c) => {
+  const db = c.env.DB;
+  const result = await db.prepare('SELECT * FROM topics ORDER BY created_at DESC').all();
+  return c.json(result.results || []);
+});
+
+app.get('/topics/:id', async (c) => {
+  const db = c.env.DB;
+  const topicId = c.req.param('id');
+  const result = await db.prepare('SELECT * FROM topics WHERE id = ?').bind(topicId).first();
+
+  if (!result) {
+    return c.json({ error: 'Topic not found' }, 404);
+  }
+
+  return c.json(result);
+});
+
+// Comments endpoints
+app.get('/topics/:id/comments', async (c) => {
+  const db = c.env.DB;
+  const topicId = c.req.param('id');
+  const result = await db
+    .prepare('SELECT * FROM comments WHERE topic_id = ? ORDER BY created_at ASC')
+    .bind(topicId)
+    .all();
+
+  return c.json(result.results || []);
+});
+
+app.post('/topics/:id/comments', async (c) => {
+  const db = c.env.DB;
+  const chat = c.env.CHAT;
+  const userEmail = c.get('userEmail');
+  const topicId = c.req.param('id');
+
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const body = await c.req.json();
+  const { content } = body;
+
+  if (!content) {
+    return c.json({ error: 'Content required' }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  const timestamp = new Date().toISOString();
+
+  // Write to D1
+  await db
+    .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, topicId, userEmail, content, timestamp)
+    .run();
+
+  // Notify DO to broadcast
+  const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
+  try {
+    const chatDo = chat.get('global-chat');
+    await chatDo.fetch(
+      new Request('http://internal/broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'new-comment', data: comment }),
+      })
+    );
+  } catch (err) {
+    console.error('Failed to notify DO:', err);
+  }
+
+  return c.json(comment, 201);
+});
+
+// WebSocket endpoint
+app.get('/ws', async (c) => {
+  const chat = c.env.CHAT;
+  const chatDo = chat.get('global-chat');
+
+  // Upgrade to WebSocket via DO
+  return chatDo.fetch(c.req.raw);
+});
+
 export default app;
+export { GlobalChat };
