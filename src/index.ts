@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { GlobalChat } from './durable-objects/global-chat';
 
 type Env = {
   Variables: {
@@ -11,7 +10,6 @@ type Env = {
     DB: any;
     KV_ADMIN: any;
     R2_PROFILES: any;
-    CHAT: any;
     ENVIRONMENT?: string;
   };
 };
@@ -668,11 +666,20 @@ app.get('/topics/:id', async (c) => {
 app.get('/topics/:id/comments', async (c) => {
   const db = c.env.DB;
   const topicId = c.req.param('id');
+  const since = c.req.query('since');
+
   try {
-    const result = await db
-      .prepare('SELECT * FROM comments WHERE topic_id = ? ORDER BY created_at ASC')
-      .bind(topicId)
-      .all();
+    let query = 'SELECT * FROM comments WHERE topic_id = ?';
+    const params: any[] = [topicId];
+
+    if (since) {
+      query += ' AND created_at > ?';
+      params.push(since);
+    }
+
+    query += ' ORDER BY created_at ASC';
+
+    const result = await db.prepare(query).bind(...params).all();
     return c.json(result.results || []);
   } catch (err: any) {
     return c.json({ error: 'Failed to fetch comments: ' + err.message }, 500);
@@ -681,7 +688,6 @@ app.get('/topics/:id/comments', async (c) => {
 
 app.post('/topics/:id/comments', async (c) => {
   const db = c.env.DB;
-  const chat = c.env.CHAT;
   const userEmail = c.get('userEmail');
   const topicId = c.req.param('id');
 
@@ -704,28 +710,12 @@ app.post('/topics/:id/comments', async (c) => {
     const id = crypto.randomUUID();
     const timestamp = new Date().toISOString();
 
-    // Write to D1
     await db
       .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
       .bind(id, topicId, userEmail, content, timestamp)
       .run();
 
-    // Notify DO to broadcast
-    const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
-    try {
-      const chatDo = chat.get('global-chat');
-      await chatDo.fetch(
-        new Request('http://internal/broadcast', {
-          method: 'POST',
-          body: JSON.stringify({ type: 'new-comment', data: comment }),
-        })
-      );
-    } catch (err) {
-      console.error('Failed to notify DO:', err);
-      // Still return success even if DO notification fails
-    }
-
-    return c.json(comment, 201);
+    return c.json({ id, topic_id: topicId, user: userEmail, content, created_at: timestamp }, 201);
   } catch (err: any) {
     console.error('Comment post error:', err);
     return c.json({ error: 'Failed to post comment: ' + err.message }, 500);
@@ -867,70 +857,53 @@ app.get('/topics/:id/chat', async (c) => {
       <script>
         const topicId = '${topicId}';
         const userEmail = '${userEmail}';
-        let ws = null;
-        let messages = new Map();
-        let markedReady = false;
+        let lastPoll = new Date().toISOString();
+        let pollInterval = null;
 
-        // Wait for marked to load
-        function waitForMarked(callback) {
-          if (typeof window.marked === 'function') {
-            callback();
-          } else {
-            setTimeout(() => waitForMarked(callback), 100);
+        // Poll for new comments
+        async function pollComments() {
+          try {
+            const res = await fetch(\`/topics/\${topicId}/comments?since=\${lastPoll}\`);
+            const comments = await res.json();
+            if (comments && comments.length > 0) {
+              renderComments(comments);
+              lastPoll = comments[comments.length - 1].created_at;
+            }
+          } catch (err) {
+            console.error('Poll error:', err);
           }
         }
 
-        // Load initial comments
+        // Load all comments on startup
         async function loadComments() {
-          const res = await fetch(\`/topics/\${topicId}/comments\`);
-          const comments = await res.json();
-          comments.forEach(c => messages.set(c.id, c));
-          renderComments();
-        }
-
-        // Connect WebSocket
-        function connectWebSocket() {
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const wsUrl = \`\${protocol}//\${window.location.host}/ws\`;
-          ws = new WebSocket(wsUrl);
-          ws.onmessage = (event) => {
-            try {
-              const msg = JSON.parse(event.data);
-              if (msg.type === 'new-comment' && msg.data.topic_id === topicId) {
-                messages.set(msg.data.id, msg.data);
-                renderComments();
-              }
-            } catch (err) {
-              console.error('WebSocket message error:', err);
+          try {
+            const res = await fetch(\`/topics/\${topicId}/comments\`);
+            const comments = await res.json();
+            renderComments(comments);
+            if (comments && comments.length > 0) {
+              lastPoll = comments[comments.length - 1].created_at;
             }
-          };
-          ws.onerror = (err) => {
-            console.error('WebSocket error:', err);
-            updateStatus('WebSocket connection failed', 'error');
-          };
-          ws.onopen = () => updateStatus('Connected', 'ok');
-          ws.onclose = () => updateStatus('Disconnected', 'error');
+          } catch (err) {
+            console.error('Load error:', err);
+          }
         }
 
         // Render comments
-        function renderComments() {
-          const sorted = Array.from(messages.values())
-            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-          const html = sorted.map(c => \`
+        function renderComments(comments) {
+          const html = (comments || []).map(c => \`
             <div class="comment">
               <div class="comment-meta">
                 <span class="comment-user">\${c.user}</span> •
                 <small>\${new Date(c.created_at).toLocaleString()}</small>
               </div>
-              <div class="comment-content">\${window.marked(c.content)}</div>
+              <div class="comment-content">\${window.marked ? window.marked(c.content) : c.content}</div>
             </div>
           \`).join('');
 
           document.getElementById('comments').innerHTML = html;
         }
 
-        // Post comment (global scope)
+        // Post comment
         function postComment() {
           const content = document.getElementById('editor').value.trim();
           if (!content) return;
@@ -944,16 +917,14 @@ app.get('/topics/:id/chat', async (c) => {
               document.getElementById('editor').value = '';
               document.getElementById('preview').innerHTML = '';
               updateStatus('Comment sent', 'ok');
+              pollComments();
             } else {
               updateStatus('Failed to post', 'error');
             }
-          }).catch(err => {
-            console.error('Post error:', err);
-            updateStatus('Error posting comment', 'error');
-          });
+          }).catch(err => updateStatus('Error posting comment', 'error'));
         }
 
-        // Update live preview
+        // Update preview
         function setupPreview() {
           const editor = document.getElementById('editor');
           if (editor) {
@@ -966,10 +937,9 @@ app.get('/topics/:id/chat', async (c) => {
           }
         }
 
-        // Handle image upload
+        // Upload image
         function uploadImage(file) {
           if (!file.type.startsWith('image/')) return;
-
           updateStatus('Uploading image...', 'loading');
 
           const form = new FormData();
@@ -988,10 +958,7 @@ app.get('/topics/:id/chat', async (c) => {
             } else {
               updateStatus('Upload failed', 'error');
             }
-          }).catch(err => {
-            console.error('Upload error:', err);
-            updateStatus('Upload failed', 'error');
-          });
+          }).catch(() => updateStatus('Upload failed', 'error'));
         }
 
         function handleFileSelect(event) {
@@ -1007,15 +974,15 @@ app.get('/topics/:id/chat', async (c) => {
           }
         }
 
-        // Setup on load
+        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-          waitForMarked(() => {
-            setupPreview();
-            loadComments();
-            connectWebSocket();
+          setupPreview();
+          loadComments();
+          pollInterval = setInterval(pollComments, 1500);
+          updateStatus('Polling for comments...', 'ok');
 
-            // Drag and drop
-            const uploadArea = document.getElementById('uploadArea');
+          // Drag and drop
+          const uploadArea = document.getElementById('uploadArea');
           if (uploadArea) {
             uploadArea.addEventListener('click', () => document.getElementById('imageInput').click());
             uploadArea.addEventListener('dragover', (e) => {
@@ -1031,21 +998,20 @@ app.get('/topics/:id/chat', async (c) => {
             });
           }
 
-            // Paste handler
-            const editor = document.getElementById('editor');
-            if (editor) {
-              editor.addEventListener('paste', (e) => {
-                const items = e.clipboardData.items;
-                for (const item of items) {
-                  if (item.type.startsWith('image/')) {
-                    e.preventDefault();
-                    const file = item.getAsFile();
-                    uploadImage(file);
-                  }
+          // Paste handler
+          const editor = document.getElementById('editor');
+          if (editor) {
+            editor.addEventListener('paste', (e) => {
+              const items = e.clipboardData.items;
+              for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                  e.preventDefault();
+                  const file = item.getAsFile();
+                  uploadImage(file);
                 }
-              });
-            }
-          });
+              }
+            });
+          }
         });
       </script>
     </body>
@@ -1055,14 +1021,4 @@ app.get('/topics/:id/chat', async (c) => {
   return c.html(html);
 });
 
-// WebSocket endpoint
-app.get('/ws', async (c) => {
-  const chat = c.env.CHAT;
-  const chatDo = chat.get('global-chat');
-
-  // Upgrade to WebSocket via DO
-  return chatDo.fetch(c.req.raw);
-});
-
 export default app;
-export { GlobalChat };
