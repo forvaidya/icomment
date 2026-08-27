@@ -668,12 +668,15 @@ app.get('/topics/:id', async (c) => {
 app.get('/topics/:id/comments', async (c) => {
   const db = c.env.DB;
   const topicId = c.req.param('id');
-  const result = await db
-    .prepare('SELECT * FROM comments WHERE topic_id = ? ORDER BY created_at ASC')
-    .bind(topicId)
-    .all();
-
-  return c.json(result.results || []);
+  try {
+    const result = await db
+      .prepare('SELECT * FROM comments WHERE topic_id = ? ORDER BY created_at ASC')
+      .bind(topicId)
+      .all();
+    return c.json(result.results || []);
+  } catch (err: any) {
+    return c.json({ error: 'Failed to fetch comments: ' + err.message }, 500);
+  }
 });
 
 app.post('/topics/:id/comments', async (c) => {
@@ -686,37 +689,47 @@ app.post('/topics/:id/comments', async (c) => {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const body = await c.req.json();
-  const { content } = body;
-
-  if (!content) {
-    return c.json({ error: 'Content required' }, 400);
+  if (!topicId) {
+    return c.json({ error: 'Topic ID required' }, 400);
   }
 
-  const id = crypto.randomUUID();
-  const timestamp = new Date().toISOString();
-
-  // Write to D1
-  await db
-    .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, topicId, userEmail, content, timestamp)
-    .run();
-
-  // Notify DO to broadcast
-  const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
   try {
-    const chatDo = chat.get('global-chat');
-    await chatDo.fetch(
-      new Request('http://internal/broadcast', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'new-comment', data: comment }),
-      })
-    );
-  } catch (err) {
-    console.error('Failed to notify DO:', err);
-  }
+    const body = await c.req.json();
+    const { content } = body;
 
-  return c.json(comment, 201);
+    if (!content || content.trim() === '') {
+      return c.json({ error: 'Content required' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    const timestamp = new Date().toISOString();
+
+    // Write to D1
+    await db
+      .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, topicId, userEmail, content, timestamp)
+      .run();
+
+    // Notify DO to broadcast
+    const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
+    try {
+      const chatDo = chat.get('global-chat');
+      await chatDo.fetch(
+        new Request('http://internal/broadcast', {
+          method: 'POST',
+          body: JSON.stringify({ type: 'new-comment', data: comment }),
+        })
+      );
+    } catch (err) {
+      console.error('Failed to notify DO:', err);
+      // Still return success even if DO notification fails
+    }
+
+    return c.json(comment, 201);
+  } catch (err: any) {
+    console.error('Comment post error:', err);
+    return c.json({ error: 'Failed to post comment: ' + err.message }, 500);
+  }
 });
 
 // Image upload for comments
