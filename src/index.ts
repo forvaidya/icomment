@@ -699,18 +699,28 @@ app.post('/topics/:id/comments', async (c) => {
     }
 
     // Ensure user exists (email is the PK)
-    await db
-      .prepare('INSERT OR IGNORE INTO users (email) VALUES (?)')
-      .bind(userEmail)
-      .run();
+    try {
+      await db
+        .prepare('INSERT OR IGNORE INTO users (email) VALUES (?)')
+        .bind(userEmail)
+        .run();
+    } catch (err) {
+      console.error('Failed to create/get user:', err);
+      throw new Error('User creation failed: ' + err);
+    }
 
     const id = crypto.randomUUID();
     const timestamp = new Date().toISOString();
 
-    await db
-      .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, topicId, userEmail, content, timestamp)
-      .run();
+    try {
+      await db
+        .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(id, topicId, userEmail, content, timestamp)
+        .run();
+    } catch (err) {
+      console.error('Failed to insert comment:', err);
+      throw new Error('Comment insert failed: ' + err);
+    }
 
     const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
 
@@ -725,7 +735,7 @@ app.post('/topics/:id/comments', async (c) => {
 
     return c.json(comment, 201);
   } catch (err: any) {
-    console.error('Comment post error:', err);
+    console.error('Comment post error:', err.message, err.stack);
     return c.json({ error: 'Failed to post comment: ' + err.message }, 500);
   }
 });
@@ -956,8 +966,13 @@ app.get('/topics/:id/chat', async (c) => {
           if (editor) {
             editor.addEventListener('input', (e) => {
               const preview = document.getElementById('preview');
-              if (preview && window.marked) {
-                preview.innerHTML = window.marked(e.target.value);
+              if (preview && typeof window.marked === 'function') {
+                try {
+                  preview.innerHTML = window.marked(e.target.value);
+                } catch (err) {
+                  console.error('Marked error:', err);
+                  preview.innerHTML = '<pre>' + e.target.value + '</pre>';
+                }
               }
             });
           }
