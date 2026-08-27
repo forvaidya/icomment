@@ -873,6 +873,15 @@ app.get('/topics/:id/chat', async (c) => {
         let ws = null;
         let messages = new Map();
 
+        // Wait for marked to load
+        function waitForMarked(callback) {
+          if (typeof window.marked === 'function') {
+            callback();
+          } else {
+            setTimeout(() => waitForMarked(callback), 50);
+          }
+        }
+
         // Load initial comments
         async function loadComments() {
           const res = await fetch(\`/topics/\${topicId}/comments\`);
@@ -916,7 +925,7 @@ app.get('/topics/:id/chat', async (c) => {
                 <span class="comment-user">\${c.user}</span> •
                 <small>\${new Date(c.created_at).toLocaleString()}</small>
               </div>
-              <div class="comment-content">\${window.marked(c.content)}</div>
+              <div class="comment-content">\${typeof window.marked === 'function' ? window.marked(c.content) : c.content}</div>
             </div>
           \`).join('');
 
@@ -1001,12 +1010,13 @@ app.get('/topics/:id/chat', async (c) => {
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-          setupPreview();
-          loadComments();
-          connectWebSocket();
+          waitForMarked(() => {
+            setupPreview();
+            loadComments();
+            connectWebSocket();
 
-          // Drag and drop
-          const uploadArea = document.getElementById('uploadArea');
+            // Drag and drop
+            const uploadArea = document.getElementById('uploadArea');
           if (uploadArea) {
             uploadArea.addEventListener('click', () => document.getElementById('imageInput').click());
             uploadArea.addEventListener('dragover', (e) => {
@@ -1036,6 +1046,7 @@ app.get('/topics/:id/chat', async (c) => {
               }
             });
           }
+          });
         });
       </script>
     </body>
