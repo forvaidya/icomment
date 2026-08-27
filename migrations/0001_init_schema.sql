@@ -2,8 +2,10 @@
 -- Step 02: D1 CRUD
 
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
+  email TEXT PRIMARY KEY,
+  username TEXT UNIQUE,
+  bio TEXT,
+  profile_image_url TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -13,17 +15,18 @@ CREATE TABLE IF NOT EXISTS boards (
   description TEXT,
   created_by TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (created_by) REFERENCES users(id)
+  FOREIGN KEY (created_by) REFERENCES users(email)
 );
 
 CREATE TABLE IF NOT EXISTS topics (
   id TEXT PRIMARY KEY,
   board_id TEXT NOT NULL,
   title TEXT NOT NULL,
+  description TEXT,
   created_by TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (board_id) REFERENCES boards(id),
-  FOREIGN KEY (created_by) REFERENCES users(id)
+  FOREIGN KEY (created_by) REFERENCES users(email)
 );
 
 CREATE TABLE IF NOT EXISTS general_messages (
@@ -33,7 +36,7 @@ CREATE TABLE IF NOT EXISTS general_messages (
   content TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (board_id) REFERENCES boards(id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  FOREIGN KEY (user_id) REFERENCES users(email)
 );
 
 -- Indexes for common queries
