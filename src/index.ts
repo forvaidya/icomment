@@ -869,6 +869,16 @@ app.get('/topics/:id/chat', async (c) => {
         const userEmail = '${userEmail}';
         let ws = null;
         let messages = new Map();
+        let markedReady = false;
+
+        // Wait for marked to load
+        function waitForMarked(callback) {
+          if (typeof window.marked === 'function') {
+            callback();
+          } else {
+            setTimeout(() => waitForMarked(callback), 100);
+          }
+        }
 
         // Load initial comments
         async function loadComments() {
@@ -999,10 +1009,13 @@ app.get('/topics/:id/chat', async (c) => {
 
         // Setup on load
         document.addEventListener('DOMContentLoaded', () => {
-          setupPreview();
+          waitForMarked(() => {
+            setupPreview();
+            loadComments();
+            connectWebSocket();
 
-          // Drag and drop
-          const uploadArea = document.getElementById('uploadArea');
+            // Drag and drop
+            const uploadArea = document.getElementById('uploadArea');
           if (uploadArea) {
             uploadArea.addEventListener('click', () => document.getElementById('imageInput').click());
             uploadArea.addEventListener('dragover', (e) => {
@@ -1018,24 +1031,21 @@ app.get('/topics/:id/chat', async (c) => {
             });
           }
 
-          // Paste handler
-          const editor = document.getElementById('editor');
-          if (editor) {
-            editor.addEventListener('paste', (e) => {
-              const items = e.clipboardData.items;
-              for (const item of items) {
-                if (item.type.startsWith('image/')) {
-                  e.preventDefault();
-                  const file = item.getAsFile();
-                  uploadImage(file);
+            // Paste handler
+            const editor = document.getElementById('editor');
+            if (editor) {
+              editor.addEventListener('paste', (e) => {
+                const items = e.clipboardData.items;
+                for (const item of items) {
+                  if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    uploadImage(file);
+                  }
                 }
-              }
-            });
-          }
-
-          // Initialize
-          loadComments();
-          connectWebSocket();
+              });
+            }
+          });
         });
       </script>
     </body>
