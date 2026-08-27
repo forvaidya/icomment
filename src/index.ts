@@ -218,16 +218,14 @@ app.post('/users', async (c) => {
     return c.json({ error: 'Missing required field: email' }, 400);
   }
 
-  const id = crypto.randomUUID();
   try {
     await db
-      .prepare('INSERT INTO users (id, email, username, bio) VALUES (?, ?, ?, ?)')
-      .bind(id, email, username || null, bio || null)
+      .prepare('INSERT INTO users (email, username, bio) VALUES (?, ?, ?)')
+      .bind(email, username || null, bio || null)
       .run();
 
     return c.json(
       {
-        id,
         email,
         username: username || null,
         bio: bio || null,
@@ -244,11 +242,11 @@ app.post('/users', async (c) => {
   }
 });
 
-app.get('/users/:id', async (c) => {
+app.get('/users/:email', async (c) => {
   const db = c.env.DB;
-  const userId = c.req.param('id');
+  const email = c.req.param('email');
 
-  const result = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+  const result = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
 
   if (!result) {
     return c.json({ error: 'User not found' }, 404);
@@ -257,13 +255,13 @@ app.get('/users/:id', async (c) => {
   return c.json(result);
 });
 
-app.put('/users/:id', async (c) => {
+app.put('/users/:email', async (c) => {
   const db = c.env.DB;
-  const userId = c.req.param('id');
+  const email = c.req.param('email');
   const body = await c.req.json();
   const { username, bio } = body;
 
-  const result = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+  const result = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
 
   if (!result) {
     return c.json({ error: 'User not found' }, 404);
@@ -271,11 +269,11 @@ app.put('/users/:id', async (c) => {
 
   try {
     await db
-      .prepare('UPDATE users SET username = ?, bio = ? WHERE id = ?')
-      .bind(username || result.username, bio !== undefined ? bio : result.bio, userId)
+      .prepare('UPDATE users SET username = ?, bio = ? WHERE email = ?')
+      .bind(username || result.username, bio !== undefined ? bio : result.bio, email)
       .run();
 
-    const updated = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+    const updated = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
     return c.json(updated);
   } catch (err: any) {
     if (err.message?.includes('UNIQUE')) {
@@ -285,12 +283,12 @@ app.put('/users/:id', async (c) => {
   }
 });
 
-app.post('/users/:id/avatar', async (c) => {
+app.post('/users/:email/avatar', async (c) => {
   const db = c.env.DB;
   const r2 = c.env.R2_PROFILES;
-  const userId = c.req.param('id');
+  const email = c.req.param('email');
 
-  const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+  const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
   if (!user) {
     return c.json({ error: 'User not found' }, 404);
   }
@@ -314,7 +312,7 @@ app.post('/users/:id/avatar', async (c) => {
   }
 
   const timestamp = Date.now();
-  const filename = `users/${userId}/${timestamp}-${file.name}`;
+  const filename = `users/${email}/${timestamp}-${file.name}`;
 
   const buffer = await file.arrayBuffer();
   await r2.put(filename, buffer, {
@@ -324,11 +322,11 @@ app.post('/users/:id/avatar', async (c) => {
   const publicUrl = `https://psychomments.cdn.r2.io/${filename}`;
 
   await db
-    .prepare('UPDATE users SET profile_image_url = ? WHERE id = ?')
-    .bind(publicUrl, userId)
+    .prepare('UPDATE users SET profile_image_url = ? WHERE email = ?')
+    .bind(publicUrl, email)
     .run();
 
-  const updated = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+  const updated = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
   return c.json(updated, 200);
 });
 
@@ -344,12 +342,11 @@ app.get('/profile/edit', async (c) => {
   let user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(userEmail).first();
 
   if (!user) {
-    const newId = crypto.randomUUID();
     await db
-      .prepare('INSERT INTO users (id, email) VALUES (?, ?)')
-      .bind(newId, userEmail)
+      .prepare('INSERT INTO users (email) VALUES (?)')
+      .bind(userEmail)
       .run();
-    user = { id: newId, email: userEmail, username: null, bio: null, profile_image_url: null };
+    user = { email: userEmail, username: null, bio: null, profile_image_url: null };
   }
 
   const html = `
@@ -497,33 +494,24 @@ app.post('/topics', async (c) => {
   }
 
   const topicId = crypto.randomUUID();
-  const userId = crypto.randomUUID();
 
   try {
-    // Ensure user exists
+    // Ensure user exists (email is now the PK)
     await db
-      .prepare('INSERT OR IGNORE INTO users (id, email, created_at) VALUES (?, ?, ?)')
-      .bind(userId, userEmail, new Date().toISOString())
-      .run();
-
-    // Get the actual user ID (in case they already existed)
-    const existingUser = await db
-      .prepare('SELECT id FROM users WHERE email = ?')
+      .prepare('INSERT OR IGNORE INTO users (email) VALUES (?)')
       .bind(userEmail)
-      .first() as any;
-
-    const actualUserId = existingUser?.id || userId;
+      .run();
 
     // Ensure default board exists
     await db
       .prepare('INSERT OR IGNORE INTO boards (id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind('general', 'General Discussion', 'Default board', actualUserId, new Date().toISOString())
+      .bind('general', 'General Discussion', 'Default board', userEmail, new Date().toISOString())
       .run();
 
     // Create topic
     await db
       .prepare('INSERT INTO topics (id, board_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(topicId, 'general', title, actualUserId, new Date().toISOString())
+      .bind(topicId, 'general', title, userEmail, new Date().toISOString())
       .run();
 
     return c.json({
@@ -710,23 +698,18 @@ app.post('/topics/:id/comments', async (c) => {
       return c.json({ error: 'Content required' }, 400);
     }
 
-    // Get or create user
-    let user = await db.prepare('SELECT id FROM users WHERE email = ?').bind(userEmail).first();
-    if (!user) {
-      const userId = crypto.randomUUID();
-      await db
-        .prepare('INSERT INTO users (id, email) VALUES (?, ?)')
-        .bind(userId, userEmail)
-        .run();
-      user = { id: userId };
-    }
+    // Ensure user exists (email is the PK)
+    await db
+      .prepare('INSERT OR IGNORE INTO users (email) VALUES (?)')
+      .bind(userEmail)
+      .run();
 
     const id = crypto.randomUUID();
     const timestamp = new Date().toISOString();
 
     await db
       .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, topicId, user.id, content, timestamp)
+      .bind(id, topicId, userEmail, content, timestamp)
       .run();
 
     const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
