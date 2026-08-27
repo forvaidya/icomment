@@ -6,6 +6,7 @@ type Env = {
   };
   Bindings: {
     DB: any;
+    KV: any;
     ENVIRONMENT?: string;
   };
 };
@@ -88,9 +89,18 @@ app.get('/boards', async (c) => {
 });
 
 // GET / - Diagnostic page (keep at bottom)
-app.get('/', (c) => {
+app.get('/', async (c) => {
   const token = c.req.header('Cf-Access-Jwt-Assertion');
   const claims = token ? decodeJWT(token) : null;
+  const userEmail = claims?.email as string | undefined;
+
+  let roleDisplay = 'Unauthenticated';
+  if (userEmail) {
+    const kv = c.env.KV;
+    const adminList = await kv.get('admin-emails');
+    const admins = adminList ? JSON.parse(adminList) : [];
+    roleDisplay = admins.includes(userEmail) ? `Admin: ${userEmail}` : `Patron: ${userEmail}`;
+  }
 
   const html = `
     <!DOCTYPE html>
@@ -102,6 +112,7 @@ app.get('/', (c) => {
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h1 { color: #333; }
         .status { background: #d4edda; padding: 15px; border-radius: 4px; margin: 20px 0; }
+        .welcome { background: #cfe2ff; padding: 15px; border-radius: 4px; margin: 20px 0; font-weight: bold; }
         .jwt-info { background: #e7f3ff; padding: 15px; border-radius: 4px; margin: 20px 0; font-family: monospace; font-size: 12px; }
         .success { color: #155724; }
         .info { color: #004085; }
@@ -112,6 +123,10 @@ app.get('/', (c) => {
       <div class="container">
         <h1>✅ Psychomments Worker is Running</h1>
         <p style="font-size: 20px; margin: 15px 0;">🐱 Jolly the cat</p>
+
+        <div class="welcome">
+          Welcome ${roleDisplay}
+        </div>
 
         <div class="status">
           <strong class="success">✓ Worker deployed successfully</strong>

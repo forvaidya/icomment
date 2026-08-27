@@ -8,6 +8,12 @@ binding = "DB"
 database_name = "psychomments"
 database_id = "87cd2905-4e9b-403c-b34a-b04addc07c98"
 
+# KV Namespace Binding for Admin List
+[[kv_namespaces]]
+binding = "KV"
+id = "admin-namespace"
+preview_id = "admin-namespace-preview"
+
 # CF Access Configuration
 # The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.
 # Email whitelisting and access policies must be configured manually in Cloudflare Dashboard.
