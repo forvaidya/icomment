@@ -98,16 +98,24 @@ app.get('/', async (c) => {
         </div>
 
         <div class="endpoints">
-          <strong>Available Endpoints (Step 04 Profiles + R2):</strong>
+          <strong>Available Endpoints (Step 05 Real-Time Chat):</strong>
           <ul>
+            <li><strong>Topics:</strong></li>
+            <li>POST /topics - Create topic (admin only)</li>
+            <li>GET /topics - List topics + create form</li>
+            <li>GET /topics/:id - Get topic</li>
+            <li><strong>Comments:</strong></li>
+            <li>POST /topics/:id/comments - Post comment</li>
+            <li>GET /topics/:id/comments - List comments</li>
+            <li>POST /topics/:id/comments/upload-image - Upload image to R2</li>
+            <li><strong>Chat UI:</strong></li>
+            <li>GET /topics/:id/chat - Interactive chat with markdown + images</li>
+            <li>GET /ws - WebSocket real-time updates</li>
+            <li><strong>Profiles:</strong></li>
             <li>POST /users - Create user</li>
             <li>GET /users/:id - Get user profile</li>
             <li>PUT /users/:id - Update profile</li>
             <li>POST /users/:id/avatar - Upload profile image</li>
-            <li>POST /boards - Create board</li>
-            <li>GET /boards - List boards</li>
-            <li>POST /general_messages - Create message</li>
-            <li>GET /general_messages - List messages</li>
           </ul>
         </div>
 
@@ -122,10 +130,13 @@ app.get('/', async (c) => {
             <li>✓ Step 01: Worker + CF Access ✅</li>
             <li>✓ Step 02: D1 CRUD ✅</li>
             <li>✓ Step 03: Hono Router ✅</li>
-            <li>✓ Step 04: User profiles + R2 (in progress)</li>
-            <li>→ Step 05: Durable Objects</li>
-            <li>→ Step 06: WebSocket</li>
+            <li>✓ Step 04: User profiles + R2 ✅</li>
+            <li>✓ Step 05: Real-Time Chat (DO + WebSocket + Markdown + Images) ✅</li>
+            <li>→ Step 06: Polish & optimization</li>
           </ul>
+          <p style="margin-top: 15px; font-size: 14px;">
+            <a href="/topics" style="color: #007bff; text-decoration: none; font-weight: bold;">→ Go to Topics →</a>
+          </p>
         </div>
       </div>
     </body>
