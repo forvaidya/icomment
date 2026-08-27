@@ -6,7 +6,7 @@ compatibility_date = "2024-12-11"
 [[d1_databases]]
 binding = "DB"
 database_name = "psychomments"
-database_id = "87cd2905-4e9b-403c-b34a-b04addc07c98"
+database_id = "92031769-ba35-429d-9a63-ceb63f9a3ad2"
 
 # KV Namespace Binding for Admin List
 [[kv_namespaces]]
