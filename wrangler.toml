@@ -19,6 +19,11 @@ preview_id = "42aac3233a734f66835313dd75ed887c"
 binding = "R2_PROFILES"
 bucket_name = "psychomments-profiles"
 
+# Durable Object Deletion (remove GlobalChat, replaced with D1 polling)
+[[migrations]]
+tag = "v2"
+deleted_classes = ["GlobalChat"]
+
 # CF Access Configuration
 # The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.
 # Email whitelisting and access policies must be configured manually in Cloudflare Dashboard.
