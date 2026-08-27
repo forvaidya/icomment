@@ -567,6 +567,284 @@ app.post('/topics/:id/comments', async (c) => {
   return c.json(comment, 201);
 });
 
+// Image upload for comments
+app.post('/topics/:id/comments/upload-image', async (c) => {
+  const r2 = c.env.R2_PROFILES;
+  const topicId = c.req.param('id');
+  const userEmail = c.get('userEmail');
+
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const form = await c.req.formData();
+  const file = form.get('file') as any;
+
+  if (!file) {
+    return c.json({ error: 'No file provided' }, 400);
+  }
+
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const MAX_SIZE = 5 * 1024 * 1024;
+
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    return c.json({ error: 'Invalid file type. Allowed: jpg, png, webp, gif' }, 400);
+  }
+
+  if (file.size > MAX_SIZE) {
+    return c.json({ error: 'File too large. Max: 5MB' }, 400);
+  }
+
+  const timestamp = Date.now();
+  const filename = `comments/${topicId}/${timestamp}-${file.name}`;
+
+  const buffer = await file.arrayBuffer();
+  await r2.put(filename, buffer, {
+    httpMetadata: { contentType: file.type },
+  });
+
+  const publicUrl = `https://psychomments.cdn.r2.io/${filename}`;
+
+  return c.json({ url: publicUrl });
+});
+
+// Chat UI page
+app.get('/topics/:id/chat', async (c) => {
+  const topicId = c.req.param('id');
+  const db = c.env.DB;
+  const userEmail = c.get('userEmail');
+
+  if (!userEmail) {
+    return c.html('<h1>Not Authenticated</h1><p>Please log in via CF Access</p>');
+  }
+
+  // Fetch topic
+  const topic = await db.prepare('SELECT * FROM topics WHERE id = ?').bind(topicId).first();
+
+  if (!topic) {
+    return c.html('<h1>Topic Not Found</h1>');
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>${topic.title} - Chat</title>
+      <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js" type="module"></script>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; }
+        .container { max-width: 900px; margin: 0 auto; display: flex; height: 100vh; }
+        .sidebar { width: 250px; background: #fff; border-right: 1px solid #ddd; padding: 20px; overflow-y: auto; }
+        .main { flex: 1; display: flex; flex-direction: column; }
+        .header { background: #fff; padding: 20px; border-bottom: 1px solid #ddd; }
+        .comments-area { flex: 1; overflow-y: auto; padding: 20px; }
+        .comment { background: #fff; margin-bottom: 15px; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
+        .comment-meta { font-size: 12px; color: #666; margin-bottom: 8px; }
+        .comment-user { font-weight: bold; }
+        .comment-content { line-height: 1.6; }
+        .comment-content img { max-width: 100%; border-radius: 4px; margin: 10px 0; }
+        .comment-content code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+        .comment-content pre { background: #f0f0f0; padding: 10px; border-radius: 4px; overflow-x: auto; margin: 10px 0; }
+        .editor-area { background: #fff; padding: 20px; border-top: 1px solid #ddd; }
+        .editor-container { display: flex; gap: 15px; }
+        .editor-input { flex: 1; display: flex; flex-direction: column; }
+        .preview { flex: 0 0 40%; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; padding: 10px; overflow-y: auto; max-height: 200px; }
+        textarea { width: 100%; min-height: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px; resize: vertical; }
+        .editor-tools { margin-top: 10px; display: flex; gap: 10px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        button:hover { background: #0056b3; }
+        .upload-area { border: 2px dashed #007bff; border-radius: 4px; padding: 20px; text-align: center; background: #f0f7ff; cursor: pointer; }
+        .upload-area.active { background: #007bff; color: white; }
+        .status { font-size: 12px; color: #666; margin-top: 5px; }
+        .loading { color: #0066cc; }
+        h1 { font-size: 24px; margin: 0; }
+        .back-link { color: #007bff; text-decoration: none; font-size: 14px; }
+        .back-link:hover { text-decoration: underline; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="sidebar">
+          <a href="/topics" class="back-link">← Back to Topics</a>
+          <h3 style="margin-top: 20px;">${topic.title}</h3>
+          <p style="font-size: 12px; color: #666; margin-top: 10px;">${topic.description || 'No description'}</p>
+        </div>
+
+        <div class="main">
+          <div class="header">
+            <h1>${topic.title}</h1>
+            <small style="color: #666;">Logged in as: ${userEmail}</small>
+          </div>
+
+          <div class="comments-area" id="comments"></div>
+
+          <div class="editor-area">
+            <div class="editor-container">
+              <div class="editor-input">
+                <textarea id="editor" placeholder="Type your comment... Paste images or drag-drop to embed them. Markdown supported."></textarea>
+                <div class="editor-tools">
+                  <button onclick="postComment()">Send</button>
+                  <div class="upload-area" id="uploadArea">
+                    Drop images here or click
+                    <input type="file" id="imageInput" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+                  </div>
+                </div>
+                <div class="status" id="status"></div>
+              </div>
+              <div class="preview" id="preview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script type="module">
+        import { marked } from 'https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js';
+
+        const topicId = '${topicId}';
+        const userEmail = '${userEmail}';
+        let ws = null;
+        let messages = new Map();
+
+        // Load initial comments
+        async function loadComments() {
+          const res = await fetch(\`/topics/\${topicId}/comments\`);
+          const comments = await res.json();
+          comments.forEach(c => messages.set(c.id, c));
+          renderComments();
+        }
+
+        // Connect WebSocket
+        function connectWebSocket() {
+          ws = new WebSocket('wss://psychomments.mahesh-vaidya-aitools.workers.dev/ws');
+          ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'new-comment' && msg.data.topic_id === topicId) {
+              messages.set(msg.data.id, msg.data);
+              renderComments();
+            }
+          };
+          ws.onerror = () => updateStatus('WebSocket error', 'error');
+          ws.onopen = () => updateStatus('Connected', 'ok');
+        }
+
+        // Render comments
+        function renderComments() {
+          const sorted = Array.from(messages.values())
+            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+          const html = sorted.map(c => \`
+            <div class="comment">
+              <div class="comment-meta">
+                <span class="comment-user">\${c.user}</span> •
+                <small>\${new Date(c.created_at).toLocaleString()}</small>
+              </div>
+              <div class="comment-content">\${marked(c.content)}</div>
+            </div>
+          \`).join('');
+
+          document.getElementById('comments').innerHTML = html;
+        }
+
+        // Post comment
+        async function postComment() {
+          const content = document.getElementById('editor').value.trim();
+          if (!content) return;
+
+          const res = await fetch(\`/topics/\${topicId}/comments\`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+          });
+
+          if (res.ok) {
+            document.getElementById('editor').value = '';
+            document.getElementById('preview').innerHTML = '';
+            updateStatus('Comment sent', 'ok');
+          }
+        }
+
+        // Update live preview
+        document.getElementById('editor').addEventListener('input', (e) => {
+          const content = e.target.value;
+          document.getElementById('preview').innerHTML = marked(content);
+        });
+
+        // Handle image upload
+        async function uploadImage(file) {
+          if (!file.type.startsWith('image/')) return;
+
+          updateStatus('Uploading image...', 'loading');
+
+          const form = new FormData();
+          form.append('file', file);
+
+          const res = await fetch(\`/topics/\${topicId}/comments/upload-image\`, {
+            method: 'POST',
+            body: form
+          });
+
+          if (res.ok) {
+            const { url } = await res.json();
+            const markdown = \`![image](\${url})\`;
+            const editor = document.getElementById('editor');
+            editor.value += '\\n' + markdown + '\\n';
+            editor.dispatchEvent(new Event('input'));
+            updateStatus('Image uploaded', 'ok');
+          } else {
+            updateStatus('Upload failed', 'error');
+          }
+        }
+
+        function handleFileSelect(event) {
+          const file = event.target.files[0];
+          if (file) uploadImage(file);
+        }
+
+        // Drag and drop
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('click', () => document.getElementById('imageInput').click());
+        uploadArea.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          uploadArea.classList.add('active');
+        });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('active'));
+        uploadArea.addEventListener('drop', (e) => {
+          e.preventDefault();
+          uploadArea.classList.remove('active');
+          const file = e.dataTransfer.files[0];
+          if (file) uploadImage(file);
+        });
+
+        // Paste handler
+        document.getElementById('editor').addEventListener('paste', (e) => {
+          const items = e.clipboardData.items;
+          for (const item of items) {
+            if (item.type.startsWith('image/')) {
+              e.preventDefault();
+              const file = item.getAsFile();
+              uploadImage(file);
+            }
+          }
+        });
+
+        function updateStatus(msg, type) {
+          const el = document.getElementById('status');
+          el.textContent = msg;
+          el.className = 'status ' + type;
+        }
+
+        // Initialize
+        loadComments();
+        connectWebSocket();
+      </script>
+    </body>
+    </html>
+  `;
+
+  return c.html(html);
+});
+
 // WebSocket endpoint
 app.get('/ws', async (c) => {
   const chat = c.env.CHAT;
