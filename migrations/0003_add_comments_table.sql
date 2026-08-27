@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS comments (
   content TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (topic_id) REFERENCES topics(id),
-  FOREIGN KEY (user_id) REFERENCES users(id)
+  FOREIGN KEY (user_id) REFERENCES users(email)
 );
 
 -- Indexes for common queries
