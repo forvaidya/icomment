@@ -10,7 +10,7 @@ wrangler d1 create psychomments --yes || echo "Database may already exist, conti
 
 # Initialize KV with admin list
 echo "Setting up KV admin list..."
-wrangler kv:key put admin-emails '["forvaidya@gmail.com"]' --binding=KV --path=admin-namespace || echo "KV already initialized or namespace needs manual creation"
+wrangler kv:key put admin-emails '["forvaidya@gmail.com"]' --binding=KV_ADMIN --path=psychomments-admin || echo "KV already initialized or namespace needs manual creation"
 
 echo "✓ D1 database setup complete"
 echo "✓ KV admin list initialized"

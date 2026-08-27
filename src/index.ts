@@ -6,7 +6,7 @@ type Env = {
   };
   Bindings: {
     DB: any;
-    KV: any;
+    KV_ADMIN: any;
     ENVIRONMENT?: string;
   };
 };
@@ -96,8 +96,7 @@ app.get('/', async (c) => {
 
   let roleDisplay = 'Unauthenticated';
   if (userEmail) {
-    const kv = c.env.KV;
-    const adminList = await kv.get('admin-emails');
+    const adminList = await c.env.KV_ADMIN.get('admin-emails');
     const admins = adminList ? JSON.parse(adminList) : [];
     roleDisplay = admins.includes(userEmail) ? `Admin: ${userEmail}` : `Patron: ${userEmail}`;
   }
