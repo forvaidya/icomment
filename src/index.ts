@@ -514,6 +514,12 @@ app.post('/topics', async (c) => {
 
     const actualUserId = existingUser?.id || userId;
 
+    // Ensure default board exists
+    await db
+      .prepare('INSERT OR IGNORE INTO boards (id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind('general', 'General Discussion', 'Default board', actualUserId, new Date().toISOString())
+      .run();
+
     // Create topic
     await db
       .prepare('INSERT INTO topics (id, board_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
