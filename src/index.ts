@@ -496,8 +496,117 @@ app.post('/topics', async (c) => {
 
 app.get('/topics', async (c) => {
   const db = c.env.DB;
+  const isAdmin = c.get('isAdmin');
+  const userEmail = c.get('userEmail');
+
   const result = await db.prepare('SELECT * FROM topics ORDER BY created_at DESC').all();
-  return c.json(result.results || []);
+  const topics = result.results || [];
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Topics - Psychomments</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; padding: 40px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #333; margin-bottom: 30px; }
+        .user-info { background: #e7f3ff; padding: 15px; border-radius: 4px; margin-bottom: 20px; font-size: 14px; }
+        .admin-panel { background: #fff; padding: 25px; border-radius: 8px; margin-bottom: 30px; border: 2px solid #007bff; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px; }
+        textarea { resize: vertical; min-height: 80px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        .topics-list { display: grid; gap: 15px; }
+        .topic-card { background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #eee; cursor: pointer; transition: all 0.2s; }
+        .topic-card:hover { border-color: #007bff; box-shadow: 0 2px 8px rgba(0,123,255,0.1); }
+        .topic-title { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 8px; }
+        .topic-desc { font-size: 14px; color: #666; margin-bottom: 10px; }
+        .topic-meta { font-size: 12px; color: #999; }
+        .topic-link { color: #007bff; text-decoration: none; font-size: 14px; font-weight: bold; }
+        .topic-link:hover { text-decoration: underline; }
+        .empty { text-align: center; color: #666; padding: 40px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Topics</h1>
+
+        ${userEmail ? `<div class="user-info">Logged in as: <strong>${userEmail}</strong> ${isAdmin ? '👑 Admin' : ''}</div>` : ''}
+
+        ${isAdmin ? `
+          <div class="admin-panel">
+            <h2 style="margin-bottom: 20px;">Create New Topic</h2>
+            <form onsubmit="createTopic(event)">
+              <div class="form-group">
+                <label>Title *</label>
+                <input type="text" id="title" required placeholder="Topic title">
+              </div>
+              <div class="form-group">
+                <label>Description</label>
+                <textarea id="description" placeholder="Optional description"></textarea>
+              </div>
+              <button type="submit">Create Topic</button>
+              <div id="createStatus" style="margin-top: 10px; font-size: 14px;"></div>
+            </form>
+          </div>
+        ` : ''}
+
+        <h2 style="margin-bottom: 20px;">All Topics</h2>
+        ${topics.length === 0 ? `
+          <div class="empty">
+            <p>No topics yet.</p>
+            ${isAdmin ? '<p>Create one above!</p>' : '<p>Check back later.</p>'}
+          </div>
+        ` : `
+          <div class="topics-list">
+            ${topics.map((t: any) => `
+              <div class="topic-card">
+                <div class="topic-title">${t.title}</div>
+                ${t.description ? `<div class="topic-desc">${t.description}</div>` : ''}
+                <div class="topic-meta">Created by: ${t.created_by}</div>
+                <a href="/topics/${t.id}/chat" class="topic-link">Enter Chat →</a>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <script>
+        async function createTopic(event) {
+          event.preventDefault();
+          const title = document.getElementById('title').value;
+          const description = document.getElementById('description').value;
+          const status = document.getElementById('createStatus');
+
+          status.textContent = 'Creating...';
+          status.style.color = '#0066cc';
+
+          const res = await fetch('/topics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description })
+          });
+
+          if (res.ok) {
+            status.textContent = 'Topic created! Reloading...';
+            status.style.color = '#28a745';
+            setTimeout(() => location.reload(), 1000);
+          } else {
+            const err = await res.json();
+            status.textContent = 'Error: ' + (err.error || 'Failed to create');
+            status.style.color = '#dc3545';
+          }
+        }
+      </script>
+    </body>
+    </html>
+  `;
+
+  return c.html(html);
 });
 
 app.get('/topics/:id', async (c) => {
