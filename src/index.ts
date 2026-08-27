@@ -731,7 +731,7 @@ app.post('/topics/:id/comments', async (c) => {
     const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
 
     // Notify DO to broadcast (fire and forget, don't await)
-    chat.get('global-chat').fetch(
+    chat.get(chat.idFromName('global-chat')).fetch(
       new Request('http://internal/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1075,7 +1075,7 @@ app.get('/topics/:id/chat', async (c) => {
 // WebSocket endpoint
 app.get('/ws', async (c) => {
   const chat = c.env.CHAT;
-  const chatDo = chat.get('global-chat');
+  const chatDo = chat.get(chat.idFromName('global-chat'));
   return chatDo.fetch(c.req.raw);
 });
 
