@@ -26,6 +26,10 @@
 - Workers + CF Access from step 01
 - JWT available in request context but not extracted yet
 - D1 as owner of relational data (users, boards, topics, general_messages)
+- **KV for admin list (not D1)**: Small dataset (config), read-heavy, no complex queries
+  - Rationale: KV optimized for reference data; D1 overkill for 2-3 emails
+  - Admin list stored as JSON array in KV: `["forvaidya@gmail.com", ...]`
+  - User role determined by checking KV membership at request time
 
 ## What to do next
 
