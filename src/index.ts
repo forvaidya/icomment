@@ -809,7 +809,6 @@ app.get('/topics/:id/chat', async (c) => {
     <html>
     <head>
       <title>${topic.title} - Chat</title>
-      <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js" type="module"></script>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; }
@@ -886,10 +885,11 @@ app.get('/topics/:id/chat', async (c) => {
 
         // Wait for marked to load
         function waitForMarked(callback) {
-          if (typeof window.marked === 'function') {
+          if (window.marked && (typeof window.marked === 'function' || typeof window.marked.parse === 'function')) {
+            console.log('marked ready!');
             callback();
           } else {
-            setTimeout(() => waitForMarked(callback), 50);
+            setTimeout(() => waitForMarked(callback), 100);
           }
         }
 
@@ -903,10 +903,16 @@ app.get('/topics/:id/chat', async (c) => {
 
         // Connect WebSocket
         function connectWebSocket() {
+          console.log('connectWebSocket called');
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
           const wsUrl = \`\${protocol}//\${window.location.host}/ws\`;
+          console.log('Connecting to:', wsUrl);
           ws = new WebSocket(wsUrl);
+          ws.onopen = () => console.log('WebSocket connected!');
+          ws.onerror = (err) => console.error('WebSocket error:', err);
+          ws.onclose = () => console.log('WebSocket closed');
           ws.onmessage = (event) => {
+            console.log('WebSocket message received:', event.data);
             try {
               const msg = JSON.parse(event.data);
               if (msg.type === 'new-comment' && msg.data.topic_id === topicId) {
@@ -936,7 +942,7 @@ app.get('/topics/:id/chat', async (c) => {
                 <span class="comment-user">\${c.user}</span> •
                 <small>\${new Date(c.created_at).toLocaleString()}</small>
               </div>
-              <div class="comment-content">\${typeof window.marked === 'function' ? window.marked(c.content) : c.content}</div>
+              <div class="comment-content">\${window.marked ? (typeof window.marked === 'function' ? window.marked(c.content) : window.marked.parse(c.content)) : c.content}</div>
             </div>
           \`).join('');
 
@@ -1025,8 +1031,11 @@ app.get('/topics/:id/chat', async (c) => {
         }
 
         // Initialize
+        console.log('Script loaded, waiting for DOM...');
         document.addEventListener('DOMContentLoaded', () => {
+          console.log('DOMContentLoaded fired');
           waitForMarked(() => {
+            console.log('waitForMarked callback fired');
             setupPreview();
             loadComments();
             connectWebSocket();
@@ -1074,9 +1083,19 @@ app.get('/topics/:id/chat', async (c) => {
 
 // WebSocket endpoint
 app.get('/ws', async (c) => {
-  const chat = c.env.CHAT;
-  const chatDo = chat.get(chat.idFromName('global-chat'));
-  return chatDo.fetch(c.req.raw);
+  console.log('GET /ws called');
+  try {
+    const chat = c.env.CHAT;
+    const chatDo = chat.get(chat.idFromName('global-chat'));
+    const req = c.req.raw;
+    console.log('Fetching DO with request:', req.method, req.url);
+    const response = await chatDo.fetch(req);
+    console.log('DO returned response');
+    return response;
+  } catch (err: any) {
+    console.error('WS error:', err.message);
+    return c.text('Error: ' + err.message, 500);
+  }
 });
 
 export default app;

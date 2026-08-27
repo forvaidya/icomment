@@ -12,10 +12,12 @@ export class GlobalChat {
 
   async fetch(req: any): Promise<any> {
     const url = new URL(req.url);
+    console.log('DO fetch called:', req.method, url.pathname, 'upgrade:', req.headers.get('upgrade'));
 
     // WebSocket upgrade (check both cases)
     const upgradeHeader = req.headers.get('upgrade') || req.headers.get('Upgrade');
     if (upgradeHeader === 'websocket') {
+      console.log('WebSocket upgrade detected');
       try {
         // Create WebSocket pair (client for browser, server for DO)
         const pair = new (globalThis as any).WebSocketPair();
