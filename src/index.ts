@@ -850,9 +850,8 @@ app.get('/topics/:id/chat', async (c) => {
         </div>
       </div>
 
-      <script type="module">
-        import { marked } from 'https://cdn.jsdelivr.net/npm/marked/lib/marked.esm.js';
-
+      <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.min.js"></script>
+      <script>
         const topicId = '${topicId}';
         const userEmail = '${userEmail}';
         let ws = null;
@@ -872,14 +871,22 @@ app.get('/topics/:id/chat', async (c) => {
           const wsUrl = \`\${protocol}//\${window.location.host}/ws\`;
           ws = new WebSocket(wsUrl);
           ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            if (msg.type === 'new-comment' && msg.data.topic_id === topicId) {
-              messages.set(msg.data.id, msg.data);
-              renderComments();
+            try {
+              const msg = JSON.parse(event.data);
+              if (msg.type === 'new-comment' && msg.data.topic_id === topicId) {
+                messages.set(msg.data.id, msg.data);
+                renderComments();
+              }
+            } catch (err) {
+              console.error('WebSocket message error:', err);
             }
           };
-          ws.onerror = () => updateStatus('WebSocket error', 'error');
+          ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+            updateStatus('WebSocket connection failed', 'error');
+          };
           ws.onopen = () => updateStatus('Connected', 'ok');
+          ws.onclose = () => updateStatus('Disconnected', 'error');
         }
 
         // Render comments
@@ -893,39 +900,51 @@ app.get('/topics/:id/chat', async (c) => {
                 <span class="comment-user">\${c.user}</span> •
                 <small>\${new Date(c.created_at).toLocaleString()}</small>
               </div>
-              <div class="comment-content">\${marked(c.content)}</div>
+              <div class="comment-content">\${window.marked(c.content)}</div>
             </div>
           \`).join('');
 
           document.getElementById('comments').innerHTML = html;
         }
 
-        // Post comment
-        async function postComment() {
+        // Post comment (global scope)
+        function postComment() {
           const content = document.getElementById('editor').value.trim();
           if (!content) return;
 
-          const res = await fetch(\`/topics/\${topicId}/comments\`, {
+          fetch(\`/topics/\${topicId}/comments\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content })
+          }).then(res => {
+            if (res.ok) {
+              document.getElementById('editor').value = '';
+              document.getElementById('preview').innerHTML = '';
+              updateStatus('Comment sent', 'ok');
+            } else {
+              updateStatus('Failed to post', 'error');
+            }
+          }).catch(err => {
+            console.error('Post error:', err);
+            updateStatus('Error posting comment', 'error');
           });
-
-          if (res.ok) {
-            document.getElementById('editor').value = '';
-            document.getElementById('preview').innerHTML = '';
-            updateStatus('Comment sent', 'ok');
-          }
         }
 
         // Update live preview
-        document.getElementById('editor').addEventListener('input', (e) => {
-          const content = e.target.value;
-          document.getElementById('preview').innerHTML = marked(content);
-        });
+        function setupPreview() {
+          const editor = document.getElementById('editor');
+          if (editor) {
+            editor.addEventListener('input', (e) => {
+              const preview = document.getElementById('preview');
+              if (preview && window.marked) {
+                preview.innerHTML = window.marked(e.target.value);
+              }
+            });
+          }
+        }
 
         // Handle image upload
-        async function uploadImage(file) {
+        function uploadImage(file) {
           if (!file.type.startsWith('image/')) return;
 
           updateStatus('Uploading image...', 'loading');
@@ -933,21 +952,23 @@ app.get('/topics/:id/chat', async (c) => {
           const form = new FormData();
           form.append('file', file);
 
-          const res = await fetch(\`/topics/\${topicId}/comments/upload-image\`, {
+          fetch(\`/topics/\${topicId}/comments/upload-image\`, {
             method: 'POST',
             body: form
-          });
-
-          if (res.ok) {
-            const { url } = await res.json();
-            const markdown = \`![image](\${url})\`;
-            const editor = document.getElementById('editor');
-            editor.value += '\\n' + markdown + '\\n';
-            editor.dispatchEvent(new Event('input'));
-            updateStatus('Image uploaded', 'ok');
-          } else {
+          }).then(res => res.json()).then(data => {
+            if (data.url) {
+              const markdown = \`![image](\${data.url})\`;
+              const editor = document.getElementById('editor');
+              editor.value += '\\n' + markdown + '\\n';
+              editor.dispatchEvent(new Event('input'));
+              updateStatus('Image uploaded', 'ok');
+            } else {
+              updateStatus('Upload failed', 'error');
+            }
+          }).catch(err => {
+            console.error('Upload error:', err);
             updateStatus('Upload failed', 'error');
-          }
+          });
         }
 
         function handleFileSelect(event) {
@@ -955,42 +976,54 @@ app.get('/topics/:id/chat', async (c) => {
           if (file) uploadImage(file);
         }
 
-        // Drag and drop
-        const uploadArea = document.getElementById('uploadArea');
-        uploadArea.addEventListener('click', () => document.getElementById('imageInput').click());
-        uploadArea.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          uploadArea.classList.add('active');
-        });
-        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('active'));
-        uploadArea.addEventListener('drop', (e) => {
-          e.preventDefault();
-          uploadArea.classList.remove('active');
-          const file = e.dataTransfer.files[0];
-          if (file) uploadImage(file);
-        });
-
-        // Paste handler
-        document.getElementById('editor').addEventListener('paste', (e) => {
-          const items = e.clipboardData.items;
-          for (const item of items) {
-            if (item.type.startsWith('image/')) {
-              e.preventDefault();
-              const file = item.getAsFile();
-              uploadImage(file);
-            }
-          }
-        });
-
         function updateStatus(msg, type) {
           const el = document.getElementById('status');
-          el.textContent = msg;
-          el.className = 'status ' + type;
+          if (el) {
+            el.textContent = msg;
+            el.className = 'status ' + type;
+          }
         }
 
-        // Initialize
-        loadComments();
-        connectWebSocket();
+        // Setup on load
+        document.addEventListener('DOMContentLoaded', () => {
+          setupPreview();
+
+          // Drag and drop
+          const uploadArea = document.getElementById('uploadArea');
+          if (uploadArea) {
+            uploadArea.addEventListener('click', () => document.getElementById('imageInput').click());
+            uploadArea.addEventListener('dragover', (e) => {
+              e.preventDefault();
+              uploadArea.classList.add('active');
+            });
+            uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('active'));
+            uploadArea.addEventListener('drop', (e) => {
+              e.preventDefault();
+              uploadArea.classList.remove('active');
+              const file = e.dataTransfer.files[0];
+              if (file) uploadImage(file);
+            });
+          }
+
+          // Paste handler
+          const editor = document.getElementById('editor');
+          if (editor) {
+            editor.addEventListener('paste', (e) => {
+              const items = e.clipboardData.items;
+              for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                  e.preventDefault();
+                  const file = item.getAsFile();
+                  uploadImage(file);
+                }
+              }
+            });
+          }
+
+          // Initialize
+          loadComments();
+          connectWebSocket();
+        });
       </script>
     </body>
     </html>
