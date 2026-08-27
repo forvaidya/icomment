@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 
 type Env = {
   Variables: {
-    user: Record<string, unknown>;
+    userEmail?: string;
+    isAdmin?: boolean;
+    claims?: Record<string, unknown>;
   };
   Bindings: {
     DB: any;
@@ -24,81 +26,35 @@ function decodeJWT(token: string): Record<string, unknown> | null {
   }
 }
 
-// POST /general_messages - Create message
-app.post('/general_messages', async (c) => {
-  const db = c.env.DB;
-  const body = await c.req.json();
-  const { board_id, user_id, content } = body;
-
-  if (!board_id || !user_id || !content) {
-    return c.json({ error: 'Missing required fields' }, 400);
-  }
-
-  const id = crypto.randomUUID();
-  const result = await db
-    .prepare('INSERT INTO general_messages (id, board_id, user_id, content) VALUES (?, ?, ?, ?)')
-    .bind(id, board_id, user_id, content)
-    .run();
-
-  return c.json({ id, board_id, user_id, content, created_at: new Date().toISOString() }, 201);
-});
-
-// GET /general_messages - List messages
-app.get('/general_messages', async (c) => {
-  const db = c.env.DB;
-  const board_id = c.req.query('board_id');
-
-  let query = 'SELECT * FROM general_messages';
-  const params = [];
-
-  if (board_id) {
-    query += ' WHERE board_id = ?';
-    params.push(board_id);
-  }
-
-  query += ' ORDER BY created_at DESC LIMIT 100';
-
-  const result = await db.prepare(query).bind(...params).all();
-  return c.json(result.results);
-});
-
-// POST /boards - Create board
-app.post('/boards', async (c) => {
-  const db = c.env.DB;
-  const body = await c.req.json();
-  const { name, description, created_by } = body;
-
-  if (!name || !created_by) {
-    return c.json({ error: 'Missing required fields' }, 400);
-  }
-
-  const id = crypto.randomUUID();
-  await db
-    .prepare('INSERT INTO boards (id, name, description, created_by) VALUES (?, ?, ?, ?)')
-    .bind(id, name, description || null, created_by)
-    .run();
-
-  return c.json({ id, name, description, created_by, created_at: new Date().toISOString() }, 201);
-});
-
-// GET /boards - List boards
-app.get('/boards', async (c) => {
-  const db = c.env.DB;
-  const result = await db.prepare('SELECT * FROM boards ORDER BY created_at DESC').all();
-  return c.json(result.results);
-});
-
-// GET / - Diagnostic page (keep at bottom)
-app.get('/', async (c) => {
+// Middleware: Extract JWT and determine user role
+app.use('*', async (c, next) => {
   const token = c.req.header('Cf-Access-Jwt-Assertion');
   const claims = token ? decodeJWT(token) : null;
   const userEmail = claims?.email as string | undefined;
 
-  let roleDisplay = 'Unauthenticated';
+  c.set('claims', claims || undefined);
+  c.set('userEmail', userEmail);
+
   if (userEmail) {
     const adminList = await c.env.KV_ADMIN.get('admin-emails');
     const admins = adminList ? JSON.parse(adminList) : [];
-    roleDisplay = admins.includes(userEmail) ? `Admin: ${userEmail}` : `Patron: ${userEmail}`;
+    c.set('isAdmin', admins.includes(userEmail));
+  } else {
+    c.set('isAdmin', false);
+  }
+
+  await next();
+});
+
+// Diagnostic page
+app.get('/', async (c) => {
+  const userEmail = c.get('userEmail');
+  const isAdmin = c.get('isAdmin');
+  const claims = c.get('claims');
+
+  let roleDisplay = 'Unauthenticated';
+  if (userEmail) {
+    roleDisplay = isAdmin ? `Admin: ${userEmail}` : `Patron: ${userEmail}`;
   }
 
   const html = `
@@ -133,12 +89,12 @@ app.get('/', async (c) => {
         </div>
 
         <div class="endpoints">
-          <strong>Available Endpoints (Step 02 CRUD):</strong>
+          <strong>Available Endpoints (Step 03 Router):</strong>
           <ul>
-            <li>POST /general_messages - Create message</li>
-            <li>GET /general_messages - List messages</li>
             <li>POST /boards - Create board</li>
             <li>GET /boards - List boards</li>
+            <li>POST /general_messages - Create message</li>
+            <li>GET /general_messages - List messages (query: board_id)</li>
           </ul>
         </div>
 
@@ -151,9 +107,10 @@ app.get('/', async (c) => {
           <p><strong>Progress:</strong></p>
           <ul>
             <li>✓ Step 01: Worker + CF Access ✅</li>
-            <li>✓ Step 02: D1 CRUD (in progress)</li>
-            <li>→ Step 03: Hono Router</li>
-            <li>→ Step 04-06: DO, WebSocket, R2</li>
+            <li>✓ Step 02: D1 CRUD ✅</li>
+            <li>✓ Step 03: Hono Router ✅</li>
+            <li>→ Step 04: User profiles + R2</li>
+            <li>→ Step 05-06: DO, WebSocket</li>
           </ul>
         </div>
       </div>
@@ -162,6 +119,68 @@ app.get('/', async (c) => {
   `;
 
   return c.html(html);
+});
+
+// Boards routes
+app.post('/boards', async (c) => {
+  const db = c.env.DB;
+  const body = await c.req.json();
+  const { name, description, created_by } = body;
+
+  if (!name || !created_by) {
+    return c.json({ error: 'Missing required fields' }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare('INSERT INTO boards (id, name, description, created_by) VALUES (?, ?, ?, ?)')
+    .bind(id, name, description || null, created_by)
+    .run();
+
+  return c.json({ id, name, description, created_by, created_at: new Date().toISOString() }, 201);
+});
+
+app.get('/boards', async (c) => {
+  const db = c.env.DB;
+  const result = await db.prepare('SELECT * FROM boards ORDER BY created_at DESC').all();
+  return c.json(result.results);
+});
+
+// Messages routes
+app.post('/general_messages', async (c) => {
+  const db = c.env.DB;
+  const body = await c.req.json();
+  const { board_id, user_id, content } = body;
+
+  if (!board_id || !user_id || !content) {
+    return c.json({ error: 'Missing required fields' }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare('INSERT INTO general_messages (id, board_id, user_id, content) VALUES (?, ?, ?, ?)')
+    .bind(id, board_id, user_id, content)
+    .run();
+
+  return c.json({ id, board_id, user_id, content, created_at: new Date().toISOString() }, 201);
+});
+
+app.get('/general_messages', async (c) => {
+  const db = c.env.DB;
+  const board_id = c.req.query('board_id');
+
+  let query = 'SELECT * FROM general_messages';
+  const params = [];
+
+  if (board_id) {
+    query += ' WHERE board_id = ?';
+    params.push(board_id);
+  }
+
+  query += ' ORDER BY created_at DESC LIMIT 100';
+
+  const result = await db.prepare(query).bind(...params).all();
+  return c.json(result.results);
 });
 
 export default app;
