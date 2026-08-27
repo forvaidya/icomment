@@ -1,110 +1,206 @@
-# CLAUDE.md — Step 05: Real-Time Global Chat + Cleanup
+# CLAUDE.md — Step 05: Real-Time Global Chat + DO Broadcast
 
 ## What this step adds
 
-- **Durable Objects** for real-time chat hub (broadcast to all connected users)
-- **WebSocket** endpoint for live messaging
-- **Global chat** in KV (one shared space, everyone sees everything)
-  - Key pattern: `chat:{DATE}:{messageId}`
-  - Daily rotation (new date → new keys)
-  - TTL: 3-day retention
-- **Cron job** for automatic cleanup (delete messages >3 days old)
-- **User presence** tracking (who's online now)
-
-## What is explicitly NOT in this step
-
-- 1:1 private messaging (deferred to Phase 3)
-- Topic/channel scoping (just one global chat)
-- Message encryption
-- Message editing/deletion
-- Typing indicators (Phase 3)
-- Message reactions (Phase 3)
-
-## Done condition
-
-- WebSocket endpoint functional (GET /ws → upgrade to WS)
-- Connected users receive live messages
-- User can send message → broadcast to all connected users
-- User presence shows online count
-- Cron job deletes KV messages >3 days old
-- Chat history NOT persisted across days (by design)
-- Load test: 10+ concurrent users broadcasting messages
-
-## Key decisions locked in
-
-- **One global DO** (not per-topic, not per-user)
-- **KV for messages** (not D1; daily rotation, no cross-day history)
-- **Cron for cleanup** (delete old messages automatically)
-- **Simple broadcast** (no private routing, no distributed state)
-- **No persistence after 3 days** (EOD purge by design)
+- **Chat UI page** with client-side state management
+- **Durable Object** (global-chat) for broadcasting
+- **WebSocket endpoint** (GET /ws) upgrade from HTTP
+- **D1 comments table** (if not exists, create schema)
+- **KV storage** for daily messages (optional, deferred)
+- **Real-time broadcast** to all connected clients
+- **Client-side merging** (D1 initial load + WebSocket real-time)
+- **Auto-dedup** by message ID, sort by timestamp
 
 ## Architecture
 
-### Durable Objects (global-chat)
+### Server (Workers + DO)
 ```
-┌─────────────────────────────────────┐
-│    Durable Object (global-chat)     │
-│  - Tracks connected users           │
-│  - Broadcasts messages to all       │
-│  - Writes to KV                     │
-└─────────────────────────────────────┘
-      ↑    ↑    ↑    ↑
-      │    │    │    │
-   User1 User2 User3 User4 (WebSocket connections)
+POST /topics/:id/comments
+    ↓
+Write to D1
+    ↓
+Notify DO
+
+GET /ws (WebSocket)
+    ↓
+DO receives + broadcasts to all connected
 ```
 
-### Message Flow
-1. User connects via WebSocket → DO adds to connected set
-2. User sends message → DO receives, writes to KV
-3. DO broadcasts to all connected users
-4. User disconnects → DO removes from connected set
-
-### KV Storage
+### Client (Browser)
 ```
-Key: chat:2026-08-27:msg-abc123
-Value: {
-  user: "mahesh",
-  content: "Hello everyone",
-  timestamp: "2026-08-27T14:30:00Z"
+Page load
+    ↓
+1. Fetch D1: GET /topics/:id/comments
+2. Initialize Map: messages = new Map()
+3. WebSocket connect: GET /ws?topic={id}
+    ↓
+Receive real-time updates
+    ↓
+Merge into Map (dedup by ID)
+    ↓
+Sort by timestamp
+    ↓
+Render UI
+```
+
+## Client-Side State Management
+
+**Data structure (browser RAM):**
+```javascript
+const messages = new Map([
+  ["msg-1", { id, topic_id, user, content, created_at }],
+  ["msg-2", { ... }],
+  ...
+]);
+```
+
+**Operations:**
+1. **Load initial**: Fetch D1 → populate Map
+2. **Receive real-time**: WebSocket → messages.set(id, msg)
+3. **Dedup**: Map.set() auto-dedupes by ID
+4. **Sort & render**: Array.from(messages.values()).sort(by timestamp)
+
+**Why Map?**
+- O(1) dedup by ID
+- No duplicates by design
+- Easy to sort: convert to array, sort, render
+
+## Endpoints
+
+### HTTP
+- `GET /` — diagnostic page
+- `GET /topics` — list all topics
+- `POST /topics` — create topic (admin only)
+- `GET /topics/:id` — get topic
+- `GET /topics/:id/comments` — list comments for topic
+- `POST /topics/:id/comments` — create comment, notify DO
+
+### WebSocket
+- `GET /ws` — upgrade to WebSocket
+  - Subscribe to DO broadcasts
+  - Receive new comments in real-time
+  - Send new comments back (or use HTTP POST)
+
+## Durable Object (global-chat)
+
+**Responsibilities:**
+- Track connected clients (WebSocket connections)
+- Broadcast new comments to all connected
+- No storage (stateless)
+- Per-message: receive → broadcast
+
+**Code pattern:**
+```typescript
+class GlobalChat {
+  constructor(state) {
+    this.clients = new Set();
+  }
+
+  async handleMessage(msg) {
+    // Broadcast to all connected clients
+    this.clients.forEach(ws => {
+      ws.send(JSON.stringify(msg));
+    });
+  }
+
+  async onOpen(ws) {
+    this.clients.add(ws);
+  }
+
+  async onClose(ws) {
+    this.clients.delete(ws);
+  }
+}
+```
+
+## D1 Schema (comments table)
+
+```sql
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  topic_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (topic_id) REFERENCES topics(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX idx_comments_topic_id ON comments(topic_id);
+CREATE INDEX idx_comments_created_at ON comments(created_at);
+```
+
+## Client Code Pattern
+
+```javascript
+// 1. Initialize
+const messages = new Map();
+let websocket;
+
+// 2. On page load
+async function loadChat(topicId) {
+  // Fetch initial from D1
+  const res = await fetch(`/topics/${topicId}/comments`);
+  const initial = await res.json();
+  
+  initial.forEach(msg => messages.set(msg.id, msg));
+  render();
+
+  // Connect WebSocket
+  websocket = new WebSocket(`/ws?topic=${topicId}`);
+  websocket.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    messages.set(msg.id, msg); // Dedup by ID
+    render(); // Re-render
+  };
 }
 
-Key: chat:2026-08-26:msg-abc124  (old, will be deleted by cron)
-```
+// 3. Post comment
+async function postComment(topicId, content) {
+  const res = await fetch(`/topics/${topicId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  });
+  // DO will broadcast to all (including self)
+}
 
-### Cron Job
-```
-Trigger: Daily at 00:00 UTC
-Action: Delete all keys where date < (today - 3 days)
-Result: Rolling 3-day window of chat history
-```
-
-## Service Selection Review
-- **Durable Objects**: Stateful compute for real-time broadcast ✅
-- **KV**: Time-series chat storage with TTL ✅
-- **Cron Triggers**: Scheduled cleanup jobs ✅
-- **WebSocket**: Real-time transport ✅
-
-## New Cloudflare Features
-- **Durable Objects** — persistent compute instances
-- **WebSocket API** — bi-directional messaging
-- **Cron Triggers** — scheduled jobs (native to Workers)
-
-## Binding Additions
-```toml
-[[durable_objects.bindings]]
-name = "CHAT"
-class_name = "GlobalChat"
-script_name = "psychomments"
+// 4. Render
+function render() {
+  const sorted = Array.from(messages.values())
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  
+  const html = sorted.map(m => `
+    <div class="comment">
+      <strong>${m.user}:</strong> ${m.content}
+      <small>${new Date(m.created_at).toLocaleString()}</small>
+    </div>
+  `).join('');
+  
+  document.getElementById('comments').innerHTML = html;
+}
 ```
 
 ## What to do next
 
-1. Create `src/durable-objects/global-chat.ts` (DO class)
-2. Add WebSocket endpoint `GET /ws` in `src/index.ts`
-3. Implement message broadcast in DO
-4. Add cron job handler for cleanup
-5. Store/retrieve messages from KV
-6. Test with curl WebSocket (or browser console)
-7. Deploy and verify broadcast + cleanup
-8. Load test with multiple concurrent users
-9. Then move to Step 06: Polish (presence, history load)
+1. Add D1 migration for comments table (if needed)
+2. Create Durable Object class (global-chat)
+3. Add WebSocket endpoint (GET /ws)
+4. Add comment CRUD endpoints (POST /topics/:id/comments)
+5. Create chat UI page (GET /topics/:id/chat)
+6. Implement client-side state management (Map, fetch, merge)
+7. Test: open two browser tabs, post comment, verify real-time sync
+8. Deploy and test
+
+## Key Learning Points
+
+- **Stateless DO** (no message storage, just broadcast)
+- **Client-side state** (each browser tab independent)
+- **WebSocket broadcast** (one message to all subscribers)
+- **D1 persistence** (source of truth)
+- **Dedup pattern** (Map by ID)
+- **Ordering** (sort by timestamp)
+
+---
+
+**Rationale**: Focus on infrastructure (DO, WebSocket, D1). Browser rendering/optimization deferred.
