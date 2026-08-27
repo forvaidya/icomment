@@ -15,23 +15,19 @@ export class GlobalChat {
 
     // WebSocket upgrade
     if (req.headers.get('upgrade') === 'websocket') {
-      const { 0: client, 1: server } = new Object() as any;
-
       try {
-        // Use Cloudflare's WebSocket pair
-        const pair = (globalThis as any).WebSocketPair
-          ? new (globalThis as any).WebSocketPair()
-          : { 0: null, 1: null };
+        // Create WebSocket pair (client for browser, server for DO)
+        const pair = new (globalThis as any).WebSocketPair();
 
-        if (!pair[0] || !pair[1]) {
-          return new Response('WebSocket upgrade failed', { status: 400 });
-        }
-
+        // Accept connection on server side
+        pair[1].accept();
         this.handleWebSocket(pair[1]);
+
+        // Return client side to browser
         return new Response(null, { status: 101, webSocket: pair[0] } as any);
       } catch (err) {
-        console.error('WebSocket error:', err);
-        return new Response('WebSocket upgrade failed', { status: 500 });
+        console.error('WebSocket upgrade error:', err);
+        return new Response('WebSocket upgrade failed: ' + err, { status: 500 });
       }
     }
 
