@@ -868,7 +868,9 @@ app.get('/topics/:id/chat', async (c) => {
 
         // Connect WebSocket
         function connectWebSocket() {
-          ws = new WebSocket('wss://psychomments.mahesh-vaidya-aitools.workers.dev/ws');
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = \`\${protocol}//\${window.location.host}/ws\`;
+          ws = new WebSocket(wsUrl);
           ws.onmessage = (event) => {
             const msg = JSON.parse(event.data);
             if (msg.type === 'new-comment' && msg.data.topic_id === topicId) {
