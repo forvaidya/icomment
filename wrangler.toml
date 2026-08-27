@@ -14,6 +14,11 @@ binding = "KV_ADMIN"
 id = "42aac3233a734f66835313dd75ed887c"
 preview_id = "42aac3233a734f66835313dd75ed887c"
 
+# R2 Bucket Binding for Profile Images
+[[r2_buckets]]
+binding = "R2_PROFILES"
+bucket_name = "psychomments-profiles"
+
 # CF Access Configuration
 # The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.
 # Email whitelisting and access policies must be configured manually in Cloudflare Dashboard.

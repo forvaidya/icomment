@@ -1,60 +1,94 @@
-# CLAUDE.md — Step 03: Hono Router
+# CLAUDE.md — Step 04: User Profiles + R2
 
 ## What this step adds
 
-- Hono middleware for JWT extraction (extract once, available to all routes)
-- Route organization by resource type (boards, messages)
-- Error handling patterns (consistent error responses)
-- Request context enriched with user info (email, admin status)
-- Foundation ready for Step 04 (user profiles, R2)
+- **D1 schema expansion**: Users table now includes profile fields
+  - `username` (unique, TEXT)
+  - `bio` (nullable, TEXT)
+  - `profile_image_url` (nullable, TEXT, stores R2 URL)
+- **R2 bucket** for storing profile images
+  - Binding: `R2_PROFILES` (Hungarian notation: `R2_` prefix)
+  - Bucket ID: `psychomments-profiles` (kebab-case, project-scoped)
+- **Profile CRUD endpoints**:
+  - `GET /users/:id` — fetch user profile
+  - `POST /users` — create new user
+  - `PUT /users/:id` — update profile (username, bio)
+  - `POST /users/:id/avatar` — upload profile image to R2, update URL in D1
+- **Image upload flow**:
+  - Client uploads image to `POST /users/:id/avatar`
+  - Worker validates (size, format)
+  - Stores in R2 under `users/{userId}/{filename}`
+  - Saves public R2 URL in D1 `users.profile_image_url`
+  - Returns JSON with updated URL
 
 ## What is explicitly NOT in this step
 
-- New endpoints (same endpoints as Step 02)
-- User profiles (deferred to Step 04)
-- Durable Objects (still deferred to Step 04)
-- WebSocket or real-time messaging
-- File attachments or R2 integration
-- DB migrations or schema changes
+- User authentication/signup (CF Access provides gate, JWT extraction done)
+- Image resizing/optimization (store as-is)
+- Rate limiting on uploads
+- Durable Objects (still deferred to Step 05)
+- WebSocket (still deferred to Step 05)
+- Comments/reactions (still deferred)
 
 ## Done condition
 
-- All Step 02 endpoints (GET /, POST/GET /boards, POST/GET /general_messages) work identically after refactor
-- JWT extracted once via middleware, accessible to all routes
-- Routes organized for readability (no behavior change)
-- Diagnostic page still shows admin/patron welcome
-- Code is cleaner and ready for Step 04
+- `GET /users/:id` returns full profile (id, email, username, bio, profile_image_url)
+- `POST /users` creates new user with profile fields
+- `PUT /users/:id` updates username/bio
+- `POST /users/:id/avatar` uploads image to R2, updates D1 URL
+- All endpoints tested via curl with sample data
+- Avatar URLs are public R2 URLs (readable from browser)
 
 ## Key decisions locked in
 
-- Hono as HTTP router framework
-- Middleware pattern: extract JWT at top level, attach to context
-- No changes to endpoint paths or request/response formats
-- All existing behavior preserved (refactor only, no feature changes)
-- D1 and KV bindings unchanged from Step 02
+- R2 for profile images (cheap, globally distributed, worker-integrated)
+- URLs stored in D1 (denormalized for fast profile retrieval)
+- Public R2 URLs (no signed requests needed for viewing)
+- Simple file naming: `users/{userId}/{timestamp}-{filename}`
+- Image validation: size < 5MB, format (jpg, png, webp)
 
 ## Architecture Patterns
 
-### Middleware Stack
-- Extract JWT from `Cf-Access-Jwt-Assertion` header
-- Decode claims and attach email + admin status to context
-- Available to all route handlers
+### R2 Bucket Structure
+```
+psychomments-profiles/
+  users/
+    {userId}/
+      {timestamp}-{filename}.jpg
+```
 
-### Route Organization
-- Group related routes together (boards, messages)
-- Keep diagnostic GET / separate (entry point)
-- Error responses consistent format: `{ error: string, status: number }`
+### Profile Data Model (D1)
+```sql
+CREATE TABLE users (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  username TEXT UNIQUE,          -- NEW
+  bio TEXT,                       -- NEW
+  profile_image_url TEXT,         -- NEW (R2 URL)
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
 
-### Context Enrichment
-Routes receive enriched context with:
-- `c.env.DB` — D1 database
-- `c.env.KV_ADMIN` — Admin list store
-- `c.get('userEmail')` — JWT email (or undefined if unauthenticated)
-- `c.get('isAdmin')` — Boolean (true if email in KV_ADMIN)
+### Avatar Upload Flow
+1. Client sends `multipart/form-data` with image file
+2. Worker validates (size, MIME type)
+3. Generate unique filename: `{timestamp}-{originalName}`
+4. Upload to R2: `users/{userId}/{filename}`
+5. Get public R2 URL
+6. Update `users.profile_image_url` in D1
+7. Return JSON: `{ id, email, username, bio, profile_image_url }`
+
+## Service Selection Review
+- **D1**: User profiles (relational, queried per-request) ✅
+- **R2**: Images (static, global distribution, cheap bandwidth) ✅
+- **KV**: Admin list (config, read-heavy) ✅ (from Step 02)
 
 ## What to do next
 
-1. Refactor src/index.ts: extract JWT middleware, organize routes
-2. Test all Step 02 endpoints to confirm behavior unchanged
-3. Deploy and verify diagnostic page still works
-4. Then move to Step 04: User profiles + R2 integration
+1. Create R2 bucket (psychomments-profiles)
+2. Migrate D1 schema (add username, bio, profile_image_url columns)
+3. Add profile endpoints (GET, POST, PUT /users/:id)
+4. Add avatar upload endpoint (POST /users/:id/avatar)
+5. Test all endpoints with curl + image uploads
+6. Deploy and verify avatar URLs work in browser
+7. Then move to Step 05: Durable Objects for topic-scoped messaging

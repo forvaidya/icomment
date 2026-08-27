@@ -9,6 +9,7 @@ type Env = {
   Bindings: {
     DB: any;
     KV_ADMIN: any;
+    R2_PROFILES: any;
     ENVIRONMENT?: string;
   };
 };
@@ -89,12 +90,16 @@ app.get('/', async (c) => {
         </div>
 
         <div class="endpoints">
-          <strong>Available Endpoints (Step 03 Router):</strong>
+          <strong>Available Endpoints (Step 04 Profiles + R2):</strong>
           <ul>
+            <li>POST /users - Create user</li>
+            <li>GET /users/:id - Get user profile</li>
+            <li>PUT /users/:id - Update profile</li>
+            <li>POST /users/:id/avatar - Upload profile image</li>
             <li>POST /boards - Create board</li>
             <li>GET /boards - List boards</li>
             <li>POST /general_messages - Create message</li>
-            <li>GET /general_messages - List messages (query: board_id)</li>
+            <li>GET /general_messages - List messages</li>
           </ul>
         </div>
 
@@ -109,8 +114,9 @@ app.get('/', async (c) => {
             <li>✓ Step 01: Worker + CF Access ✅</li>
             <li>✓ Step 02: D1 CRUD ✅</li>
             <li>✓ Step 03: Hono Router ✅</li>
-            <li>→ Step 04: User profiles + R2</li>
-            <li>→ Step 05-06: DO, WebSocket</li>
+            <li>✓ Step 04: User profiles + R2 (in progress)</li>
+            <li>→ Step 05: Durable Objects</li>
+            <li>→ Step 06: WebSocket</li>
           </ul>
         </div>
       </div>
@@ -181,6 +187,130 @@ app.get('/general_messages', async (c) => {
 
   const result = await db.prepare(query).bind(...params).all();
   return c.json(result.results);
+});
+
+// User profile routes
+app.post('/users', async (c) => {
+  const db = c.env.DB;
+  const body = await c.req.json();
+  const { email, username, bio } = body;
+
+  if (!email) {
+    return c.json({ error: 'Missing required field: email' }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  try {
+    await db
+      .prepare('INSERT INTO users (id, email, username, bio) VALUES (?, ?, ?, ?)')
+      .bind(id, email, username || null, bio || null)
+      .run();
+
+    return c.json(
+      {
+        id,
+        email,
+        username: username || null,
+        bio: bio || null,
+        profile_image_url: null,
+        created_at: new Date().toISOString(),
+      },
+      201
+    );
+  } catch (err: any) {
+    if (err.message?.includes('UNIQUE')) {
+      return c.json({ error: 'Email or username already exists' }, 409);
+    }
+    return c.json({ error: 'Failed to create user' }, 500);
+  }
+});
+
+app.get('/users/:id', async (c) => {
+  const db = c.env.DB;
+  const userId = c.req.param('id');
+
+  const result = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+
+  if (!result) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+
+  return c.json(result);
+});
+
+app.put('/users/:id', async (c) => {
+  const db = c.env.DB;
+  const userId = c.req.param('id');
+  const body = await c.req.json();
+  const { username, bio } = body;
+
+  const result = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+
+  if (!result) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+
+  try {
+    await db
+      .prepare('UPDATE users SET username = ?, bio = ? WHERE id = ?')
+      .bind(username || result.username, bio !== undefined ? bio : result.bio, userId)
+      .run();
+
+    const updated = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+    return c.json(updated);
+  } catch (err: any) {
+    if (err.message?.includes('UNIQUE')) {
+      return c.json({ error: 'Username already in use' }, 409);
+    }
+    return c.json({ error: 'Failed to update user' }, 500);
+  }
+});
+
+app.post('/users/:id/avatar', async (c) => {
+  const db = c.env.DB;
+  const r2 = c.env.R2_PROFILES;
+  const userId = c.req.param('id');
+
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+
+  const form = await c.req.formData();
+  const file = form.get('file') as any;
+
+  if (!file) {
+    return c.json({ error: 'No file provided' }, 400);
+  }
+
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  const MAX_SIZE = 5 * 1024 * 1024;
+
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    return c.json({ error: 'Invalid file type. Allowed: jpg, png, webp' }, 400);
+  }
+
+  if (file.size > MAX_SIZE) {
+    return c.json({ error: 'File too large. Max: 5MB' }, 400);
+  }
+
+  const timestamp = Date.now();
+  const filename = `users/${userId}/${timestamp}-${file.name}`;
+
+  const buffer = await file.arrayBuffer();
+  await r2.put(filename, buffer, {
+    httpMetadata: { contentType: file.type },
+  });
+
+  const publicUrl = `https://psychomments.cdn.r2.io/${filename}`;
+
+  await db
+    .prepare('UPDATE users SET profile_image_url = ? WHERE id = ?')
+    .bind(publicUrl, userId)
+    .run();
+
+  const updated = await db.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+  return c.json(updated, 200);
 });
 
 export default app;
