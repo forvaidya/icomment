@@ -31,10 +31,11 @@ Features for logged-in users. Parked after Steps 01-06 complete.
 - Searchable pin history
 
 ### Direct Messaging
-**1-on-1 chats**
+**1-on-1 chats (Private conversations)**
 - Separate namespace from topic messages
-- Private to both users
-- Notification on new message
+- Private to both users (only they can see)
+- Real-time delivery + notifications
+- Examples: personal invites, casual asks ("Are you willing to join Goa trip this weekend?"), off-topic chat
 
 **Group DMs**
 - Create group chat (3+ users)
