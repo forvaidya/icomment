@@ -497,12 +497,17 @@ app.post('/topics', async (c) => {
   }
 
   const id = crypto.randomUUID();
-  await db
-    .prepare('INSERT INTO topics (id, board_id, title, created_by) VALUES (?, ?, ?, ?)')
-    .bind(id, 'default', title, userEmail)
-    .run();
+  try {
+    await db
+      .prepare('INSERT INTO topics (id, board_id, title, created_by) VALUES (?, ?, ?, ?)')
+      .bind(id, 'general', title, userEmail)
+      .run();
+  } catch (err: any) {
+    console.error('Topic creation error:', err);
+    return c.json({ error: 'Failed to create topic: ' + err.message }, 500);
+  }
 
-  return c.json({ id, title, description, created_at: new Date().toISOString() }, 201);
+  return c.json({ id, title, description: description || null, created_at: new Date().toISOString() }, 201);
 });
 
 app.get('/topics', async (c) => {
