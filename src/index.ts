@@ -710,12 +710,23 @@ app.post('/topics/:id/comments', async (c) => {
       return c.json({ error: 'Content required' }, 400);
     }
 
+    // Get or create user
+    let user = await db.prepare('SELECT id FROM users WHERE email = ?').bind(userEmail).first();
+    if (!user) {
+      const userId = crypto.randomUUID();
+      await db
+        .prepare('INSERT INTO users (id, email) VALUES (?, ?)')
+        .bind(userId, userEmail)
+        .run();
+      user = { id: userId };
+    }
+
     const id = crypto.randomUUID();
     const timestamp = new Date().toISOString();
 
     await db
       .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, topicId, userEmail, content, timestamp)
+      .bind(id, topicId, user.id, content, timestamp)
       .run();
 
     const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
@@ -724,6 +735,7 @@ app.post('/topics/:id/comments', async (c) => {
     chat.get('global-chat').fetch(
       new Request('http://internal/broadcast', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'new-comment', data: comment }),
       })
     ).catch((err: any) => console.error('DO broadcast error:', err));
