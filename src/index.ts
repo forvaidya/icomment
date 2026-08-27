@@ -496,18 +496,39 @@ app.post('/topics', async (c) => {
     return c.json({ error: 'Title required' }, 400);
   }
 
-  const id = crypto.randomUUID();
+  const topicId = crypto.randomUUID();
+  const userId = crypto.randomUUID();
+
   try {
+    // Ensure user exists
     await db
-      .prepare('INSERT INTO topics (id, board_id, title, created_by) VALUES (?, ?, ?, ?)')
-      .bind(id, 'general', title, userEmail)
+      .prepare('INSERT OR IGNORE INTO users (id, email, created_at) VALUES (?, ?, ?)')
+      .bind(userId, userEmail, new Date().toISOString())
       .run();
+
+    // Get the actual user ID (in case they already existed)
+    const existingUser = await db
+      .prepare('SELECT id FROM users WHERE email = ?')
+      .bind(userEmail)
+      .first() as any;
+
+    const actualUserId = existingUser?.id || userId;
+
+    // Create topic
+    await db
+      .prepare('INSERT INTO topics (id, board_id, title, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(topicId, 'general', title, actualUserId, new Date().toISOString())
+      .run();
+
+    return c.json({
+      id: topicId,
+      title,
+      description: description || null,
+      created_at: new Date().toISOString()
+    }, 201);
   } catch (err: any) {
-    console.error('Topic creation error:', err);
     return c.json({ error: 'Failed to create topic: ' + err.message }, 500);
   }
-
-  return c.json({ id, title, description: description || null, created_at: new Date().toISOString() }, 201);
 });
 
 app.get('/topics', async (c) => {
