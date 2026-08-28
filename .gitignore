@@ -18,6 +18,11 @@ out/
 .env.test.local
 .env.production.local
 
+# Private keys, certificates, secrets
+NO-COMMIT/
+private.key
+*.pem
+
 # Wrangler
 .wrangler/
 wrangler.json
