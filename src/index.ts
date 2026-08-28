@@ -26,9 +26,9 @@ const app = new Hono<Env>();
 app.get('/', async (c) => {
   const userEmail = c.get('userEmail');
   if (userEmail) {
-    return c.redirect('/message/topics');
+    return c.redirect('/ant/topics');
   }
-  return c.redirect('/message/about');
+  return c.redirect('/ant/about');
 });
 
 function decodeJWT(token: string): Record<string, unknown> | null {
@@ -43,32 +43,49 @@ function decodeJWT(token: string): Record<string, unknown> | null {
 }
 
 
-// Middleware: Route-based auth (email for /message/*, mTLS for /api/*)
+// Middleware: Route-based auth (email for /ant/*, mTLS for /api/*)
 app.use('*', async (c, next) => {
   const url = new URL(c.req.url);
   const pathname = url.pathname;
 
-  // /api/* routes use mTLS (certificate-based auth)
+  // /api/* routes use mTLS (certificate-based auth) + Bearer token fallback
   if (pathname.startsWith('/api/')) {
-    // Extract client certificate from CF header
+    // Extract client certificate from CF header (mTLS)
     const tlsCert = c.req.header('cf-tls-client-cert');
     const tlsVerified = c.req.header('cf-tls-client-verify');
+    const tlsCertDN = c.req.header('cf-tls-client-cert-dn');
 
-    // For now, accept any valid mTLS connection
-    // In production, validate cert against trusted CA
-    if (tlsVerified !== 'SUCCESS' && c.env.ENVIRONMENT !== 'development') {
-      return c.json({ error: 'mTLS authentication required' }, 401);
+    // Check for mTLS certificate
+    if (tlsCert && tlsVerified === 'SUCCESS') {
+      // mTLS authenticated (preferred method)
+      c.set('deviceCert', tlsCertDN || tlsCert);
+      c.set('authMethod', 'mtls');
+      await next();
+      return;
     }
 
-    // Extract CN from cert for device identity
-    const tlsCertInfo = c.req.header('cf-tls-client-cert-dn');
-    c.set('deviceCert', tlsCertInfo || 'unknown');
-    await next();
-    return;
+    // Fallback: Bearer token (for backwards compatibility with existing devices)
+    const authHeader = c.req.header('Authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      c.set('authMethod', 'bearer');
+      // Validation happens in validateIoTToken() per-route
+      await next();
+      return;
+    }
+
+    // If dev/test mode and no cert, allow for testing
+    if (c.env.ENVIRONMENT === 'development') {
+      c.set('authMethod', 'test');
+      await next();
+      return;
+    }
+
+    // No valid auth found
+    return c.json({ error: 'mTLS certificate or Bearer token required' }, 401);
   }
 
-  // All other routes (/message/*, /admin/*, /validate, etc.) use CF Access email auth
-  if (pathname === '/validate' || pathname.startsWith('/admin/')) {
+  // All other routes (/ant/*, /ant/admin/*, /validate, etc.) use CF Access email auth
+  if (pathname === '/validate' || pathname.startsWith('/ant/admin/')) {
     // Skip CF Access check for these paths (handled per-route)
     const token = c.req.header('Cf-Access-Jwt-Assertion');
     const claims = token ? decodeJWT(token) : null;
@@ -88,7 +105,7 @@ app.use('*', async (c, next) => {
     return;
   }
 
-  // /message/* routes require CF Access auth
+  // /ant/* routes require CF Access email auth
   const token = c.req.header('Cf-Access-Jwt-Assertion');
   const claims = token ? decodeJWT(token) : null;
   const userEmail = claims?.email as string | undefined;
@@ -108,7 +125,7 @@ app.use('*', async (c, next) => {
 });
 
 // About page (was homepage)
-app.get('/message/about', async (c) => {
+app.get('/ant/about', async (c) => {
   const userEmail = c.get('userEmail');
   const isAdmin = c.get('isAdmin');
   const claims = c.get('claims');
@@ -142,7 +159,7 @@ app.get('/message/about', async (c) => {
       <div class="container">
         <div class="header">
           <h1>✅ Psychomments Worker</h1>
-          ${userEmail ? `<a href="/message/profile/edit" class="edit-link">Edit Profile</a>` : ''}
+          ${userEmail ? `<a href="/ant/profile/edit" class="edit-link">Edit Profile</a>` : ''}
         </div>
         <p style="font-size: 20px; margin: 15px 0;">🐱 Jolly the cat</p>
 
@@ -158,13 +175,13 @@ app.get('/message/about', async (c) => {
         <div class="endpoints">
           <strong>Available Endpoints (Step 05 Real-Time Chat):</strong>
           <ul>
-            <li><strong>📧 /message/* (Email Auth - CF Access):</strong></li>
-            <li>POST /message/topics - Create topic (admin only)</li>
-            <li>GET /message/topics - List topics + create form</li>
-            <li>GET /message/topics/:id/chat - Interactive chat with markdown + images</li>
-            <li>POST /message/topics/:id/comments - Post comment</li>
-            <li>GET /message/topics/:id/comments - List comments</li>
-            <li>GET /message/profile/edit - Edit user profile</li>
+            <li><strong>📧 /ant/* (Email Auth - CF Access):</strong></li>
+            <li>POST /ant/topics - Create topic (admin only)</li>
+            <li>GET /ant/topics - List topics + create form</li>
+            <li>GET /ant/topics/:id/chat - Interactive chat with markdown + images</li>
+            <li>POST /ant/topics/:id/comments - Post comment</li>
+            <li>GET /ant/topics/:id/comments - List comments</li>
+            <li>GET /ant/profile/edit - Edit user profile</li>
             <li>GET /ws - WebSocket real-time chat updates</li>
             <li><strong>🔐 /api/* (mTLS - Certificate Auth):</strong></li>
             <li>POST /api/ingest - Device publish (bearer token)</li>
@@ -241,7 +258,7 @@ app.get('/message/about', async (c) => {
             <li>→ Step 06: Polish & optimization</li>
           </ul>
           <p style="margin-top: 15px; font-size: 14px;">
-            <a href="/message/topics" style="color: #007bff; text-decoration: none; font-weight: bold;">→ Go to Topics →</a>
+            <a href="/ant/topics" style="color: #007bff; text-decoration: none; font-weight: bold;">→ Go to Topics →</a>
           </p>
         </div>
       </div>
@@ -437,7 +454,7 @@ app.post('/users/:email/avatar', async (c) => {
 });
 
 // Profile edit UI (requires authentication)
-app.get('/message/profile/edit', async (c) => {
+app.get('/ant/profile/edit', async (c) => {
   const userEmail = c.get('userEmail');
 
   if (!userEmail) {
@@ -478,13 +495,13 @@ app.get('/message/profile/edit', async (c) => {
     <body>
       <div class="container">
         <h1>Edit Profile</h1>
-        <a href="/message/topics" class="back-link">← Back</a>
+        <a href="/ant/topics" class="back-link">← Back</a>
 
         <div class="email-display">
           <strong>Email:</strong> ${user.email}
         </div>
 
-        <form method="POST" action="/message/profile/edit">
+        <form method="POST" action="/ant/profile/edit">
           <div class="form-group">
             <label for="username">Username:</label>
             <input type="text" id="username" name="username" value="${user.username || ''}" placeholder="Your username">
@@ -505,7 +522,7 @@ app.get('/message/profile/edit', async (c) => {
   return c.html(html);
 });
 
-app.post('/message/profile/edit', async (c) => {
+app.post('/ant/profile/edit', async (c) => {
   const userEmail = c.get('userEmail');
 
   if (!userEmail) {
@@ -547,7 +564,7 @@ app.post('/message/profile/edit', async (c) => {
           <div class="success">
             <p>Your profile has been saved successfully!</p>
           </div>
-          <p><a href="/message/topics">← Back to Topics</a></p>
+          <p><a href="/ant/topics">← Back to Topics</a></p>
         </div>
       </body>
       </html>
@@ -570,7 +587,7 @@ app.post('/message/profile/edit', async (c) => {
           <div class="error">
             <p>${err.message?.includes('UNIQUE') ? 'Username already in use' : 'Failed to update profile'}</p>
           </div>
-          <p><a href="/message/profile/edit">← Try again</a></p>
+          <p><a href="/ant/profile/edit">← Try again</a></p>
         </div>
       </body>
       </html>
@@ -578,8 +595,8 @@ app.post('/message/profile/edit', async (c) => {
   }
 });
 
-// Topics endpoints (/message/topics for CF Access auth)
-app.post('/message/topics', async (c) => {
+// Topics endpoints (/ant/topics for CF Access auth)
+app.post('/ant/topics', async (c) => {
   const isAdmin = c.get('isAdmin');
   const userEmail = c.get('userEmail');
 
@@ -631,7 +648,7 @@ app.post('/message/topics', async (c) => {
   }
 });
 
-app.get('/message/topics', async (c) => {
+app.get('/ant/topics', async (c) => {
   const db = c.env.DB;
   const isAdmin = c.get('isAdmin');
   const userEmail = c.get('userEmail');
@@ -711,7 +728,7 @@ app.get('/message/topics', async (c) => {
                 <div class="topic-title">${t.title}</div>
                 ${t.description ? `<div class="topic-desc">${t.description}</div>` : ''}
                 <div class="topic-meta">Created by: ${t.created_by}</div>
-                <a href="/message/topics/${t.id}/chat" class="topic-link">Enter Chat →</a>
+                <a href="/ant/topics/${t.id}/chat" class="topic-link">Enter Chat →</a>
               </div>
             `).join('')}
           </div>
@@ -728,7 +745,7 @@ app.get('/message/topics', async (c) => {
           status.textContent = 'Creating...';
           status.style.color = '#0066cc';
 
-          const res = await fetch('/message/topics', {
+          const res = await fetch('/ant/topics', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title, description })
@@ -752,7 +769,7 @@ app.get('/message/topics', async (c) => {
   return c.html(html);
 });
 
-app.get('/message/topics/:id', async (c) => {
+app.get('/ant/topics/:id', async (c) => {
   const db = c.env.DB;
   const topicId = c.req.param('id');
   const result = await db.prepare('SELECT * FROM topics WHERE id = ?').bind(topicId).first();
@@ -764,7 +781,7 @@ app.get('/message/topics/:id', async (c) => {
   return c.json(result);
 });
 
-app.put('/message/topics/:id', async (c) => {
+app.put('/ant/topics/:id', async (c) => {
   const isAdmin = c.get('isAdmin');
   if (!isAdmin) {
     return c.json({ error: 'Only admins can edit topics' }, 403);
@@ -830,7 +847,7 @@ app.put('/message/topics/:id', async (c) => {
   }
 });
 
-app.get('/message/topics/:id/edits', async (c) => {
+app.get('/ant/topics/:id/edits', async (c) => {
   const db = c.env.DB;
   const topicId = c.req.param('id');
 
@@ -847,7 +864,7 @@ app.get('/message/topics/:id/edits', async (c) => {
 });
 
 // Cleanup: Delete all R2 images for a topic (admin only)
-app.delete('/message/admin/topics/:id/cleanup-images', async (c) => {
+app.delete('/ant/admin/topics/:id/cleanup-images', async (c) => {
   const isAdmin = c.get('isAdmin');
   if (!isAdmin) {
     return c.json({ error: 'Only admins can cleanup' }, 403);
@@ -901,7 +918,7 @@ app.delete('/message/admin/topics/:id/cleanup-images', async (c) => {
   }
 });
 
-app.delete('/message/topics/:id', async (c) => {
+app.delete('/ant/topics/:id', async (c) => {
   const isAdmin = c.get('isAdmin');
   if (!isAdmin) {
     return c.json({ error: 'Only admins can delete topics' }, 403);
@@ -935,8 +952,8 @@ app.delete('/message/topics/:id', async (c) => {
   }
 });
 
-// Comments endpoints (/message/topics for CF Access auth)
-app.get('/message/topics/:id/comments', async (c) => {
+// Comments endpoints (/ant/topics for CF Access auth)
+app.get('/ant/topics/:id/comments', async (c) => {
   const db = c.env.DB;
   const topicId = c.req.param('id');
   const since = c.req.query('since');
@@ -965,7 +982,7 @@ app.get('/message/topics/:id/comments', async (c) => {
   }
 });
 
-app.post('/message/topics/:id/comments', async (c) => {
+app.post('/ant/topics/:id/comments', async (c) => {
   const db = c.env.DB;
   const chat = c.env.CHAT;
   const userEmail = c.get('userEmail');
@@ -1035,7 +1052,7 @@ app.post('/message/topics/:id/comments', async (c) => {
   }
 });
 
-app.delete('/message/topics/:id/comments/:commentId', async (c) => {
+app.delete('/ant/topics/:id/comments/:commentId', async (c) => {
   const db = c.env.DB;
   const chat = c.env.CHAT;
   const r2 = c.env.R2_PROFILES;
@@ -1118,7 +1135,7 @@ app.delete('/message/topics/:id/comments/:commentId', async (c) => {
 });
 
 // Image upload for comments
-app.post('/message/topics/:id/comments/upload-image', async (c) => {
+app.post('/ant/topics/:id/comments/upload-image', async (c) => {
   const r2 = c.env.R2_PROFILES;
   const topicId = c.req.param('id');
   const userEmail = c.get('userEmail');
@@ -1156,7 +1173,7 @@ app.post('/message/topics/:id/comments/upload-image', async (c) => {
     });
 
     // Return authenticated proxy URL (not direct R2 URL)
-    const proxyUrl = `/message/topics/${topicId}/image/${imageId}`;
+    const proxyUrl = `/ant/topics/${topicId}/image/${imageId}`;
     return c.json({ url: proxyUrl });
   } catch (err: any) {
     console.error('R2 upload error:', err.message);
@@ -1165,7 +1182,7 @@ app.post('/message/topics/:id/comments/upload-image', async (c) => {
 });
 
 // Authenticated image proxy - only accessible if authenticated
-app.get('/message/topics/:id/image/:imageId', async (c) => {
+app.get('/ant/topics/:id/image/:imageId', async (c) => {
   const userEmail = c.get('userEmail');
   if (!userEmail) {
     return c.json({ error: 'Not authenticated' }, 401);
@@ -1204,7 +1221,7 @@ app.get('/message/topics/:id/image/:imageId', async (c) => {
 });
 
 // Chat UI page
-app.get('/message/topics/:id/chat', async (c) => {
+app.get('/ant/topics/:id/chat', async (c) => {
   const topicId = c.req.param('id');
   const db = c.env.DB;
   const userEmail = c.get('userEmail');
@@ -1313,7 +1330,7 @@ app.get('/message/topics/:id/chat', async (c) => {
     <body>
       <div class="container">
         <div class="sidebar">
-          <a href="/message/topics" class="back-link">← Back to Topics</a>
+          <a href="/ant/topics" class="back-link">← Back to Topics</a>
           <h3 style="margin-top: 20px;">${topic.title}</h3>
           <p style="font-size: 12px; color: #666; margin-top: 10px;">${topic.description || 'No description'}</p>
         </div>
@@ -1407,9 +1424,9 @@ app.get('/message/topics/:id/chat', async (c) => {
         }
 
         async function confirmChatDelete() {
-          const res = await fetch(\`/message/topics/\${topicId}\`, { method: 'DELETE' });
+          const res = await fetch(\`/ant/topics/\${topicId}\`, { method: 'DELETE' });
           if (res.ok) {
-            window.location.href = '/message/topics';
+            window.location.href = '/ant/topics';
           } else {
             const err = await res.json();
             alert('Error: ' + (err.error || 'Failed to delete'));
@@ -1421,7 +1438,7 @@ app.get('/message/topics/:id/chat', async (c) => {
           document.getElementById('editModal').classList.add('active');
           // Load history
           try {
-            const res = await fetch(\`/message/topics/\${topicId}/edits\`);
+            const res = await fetch(\`/ant/topics/\${topicId}/edits\`);
             const edits = await res.json();
             if (edits.length > 0) {
               const historyList = document.getElementById('historyList');
@@ -1457,7 +1474,7 @@ app.get('/message/topics/:id/chat', async (c) => {
           }
 
           try {
-            const res = await fetch(\`/message/topics/\${topicId}\`, {
+            const res = await fetch(\`/ant/topics/\${topicId}\`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ title, description })
@@ -1488,7 +1505,7 @@ app.get('/message/topics/:id/chat', async (c) => {
         // Load initial comments
         async function loadComments() {
           try {
-            const res = await fetch(\`/message/topics/\${topicId}/comments\`);
+            const res = await fetch(\`/ant/topics/\${topicId}/comments\`);
             const comments = await res.json();
             comments.forEach(c => messages.set(c.id, c));
             renderComments();
@@ -1552,7 +1569,7 @@ app.get('/message/topics/:id/chat', async (c) => {
           const content = document.getElementById('editor').value.trim();
           if (!content) return;
 
-          fetch(\`/message/topics/\${topicId}/comments\`, {
+          fetch(\`/ant/topics/\${topicId}/comments\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content })
@@ -1596,7 +1613,7 @@ app.get('/message/topics/:id/chat', async (c) => {
           const form = new FormData();
           form.append('file', file);
 
-          fetch(\`/message/topics/\${topicId}/comments/upload-image\`, {
+          fetch(\`/ant/topics/\${topicId}/comments/upload-image\`, {
             method: 'POST',
             body: form
           }).then(res => res.json()).then(data => {
@@ -1632,7 +1649,7 @@ app.get('/message/topics/:id/chat', async (c) => {
         function deleteComment(commentId) {
           if (!confirm('Delete this message?')) return;
 
-          fetch(\`/message/topics/\${topicId}/comments/\${commentId}\`, {
+          fetch(\`/ant/topics/\${topicId}/comments/\${commentId}\`, {
             method: 'DELETE'
           }).then(res => {
             if (res.ok) {
