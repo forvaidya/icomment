@@ -557,13 +557,13 @@ app.get('/topics', async (c) => {
         textarea { resize: vertical; min-height: 80px; }
         button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         button:hover { background: #0056b3; }
-        .topics-list { display: grid; gap: 15px; }
-        .topic-card { background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #eee; cursor: pointer; transition: all 0.2s; }
-        .topic-card:hover { border-color: #007bff; box-shadow: 0 2px 8px rgba(0,123,255,0.1); }
-        .topic-title { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 8px; }
-        .topic-desc { font-size: 14px; color: #666; margin-bottom: 10px; }
-        .topic-meta { font-size: 12px; color: #999; }
-        .topic-link { color: #007bff; text-decoration: none; font-size: 14px; font-weight: bold; }
+        .topics-list { display: grid; gap: 12px; }
+        .topic-card { background: #fff; padding: 20px; border-radius: 6px; border: 1px solid #e8e8e8; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .topic-card:hover { border-color: #007bff; box-shadow: 0 4px 12px rgba(0,123,255,0.15); }
+        .topic-title { font-size: 17px; font-weight: 600; color: #333; margin-bottom: 8px; }
+        .topic-desc { font-size: 14px; color: #777; margin-bottom: 12px; line-height: 1.4; }
+        .topic-meta { font-size: 12px; color: #aaa; margin-bottom: 12px; }
+        .topic-link { color: #007bff; text-decoration: none; font-size: 13px; font-weight: 500; }
         .topic-link:hover { text-decoration: underline; }
         .empty { text-align: center; color: #666; padding: 40px; }
       </style>
@@ -658,6 +658,40 @@ app.get('/topics/:id', async (c) => {
   return c.json(result);
 });
 
+app.delete('/topics/:id', async (c) => {
+  const isAdmin = c.get('isAdmin');
+  if (!isAdmin) {
+    return c.json({ error: 'Only admins can delete topics' }, 403);
+  }
+
+  const db = c.env.DB;
+  const r2 = c.env.R2_PROFILES;
+  const topicId = c.req.param('id');
+
+  // Verify topic exists
+  const topic = await db.prepare('SELECT * FROM topics WHERE id = ?').bind(topicId).first();
+  if (!topic) {
+    return c.json({ error: 'Topic not found' }, 404);
+  }
+
+  try {
+    // Delete all R2 images for this topic
+    const prefix = `comments/${topicId}/`;
+    const listResult = await r2.list({ prefix });
+    for (const obj of listResult.objects) {
+      await r2.delete(obj.key);
+    }
+
+    // Delete all comments for this topic
+    await db.prepare('DELETE FROM comments WHERE topic_id = ?').bind(topicId).run();
+    // Delete the topic
+    await db.prepare('DELETE FROM topics WHERE id = ?').bind(topicId).run();
+    return c.json({ ok: true });
+  } catch (err: any) {
+    return c.json({ error: 'Failed to delete topic: ' + err.message }, 500);
+  }
+});
+
 // Comments endpoints
 app.get('/topics/:id/comments', async (c) => {
   const db = c.env.DB;
@@ -676,7 +710,13 @@ app.get('/topics/:id/comments', async (c) => {
     query += ' ORDER BY created_at ASC';
 
     const result = await db.prepare(query).bind(...params).all();
-    return c.json(result.results || []);
+    // Normalize field names: user_id -> user
+    const comments = (result.results || []).map((c: any) => ({
+      ...c,
+      user: c.user_id,
+      user_id: undefined
+    }));
+    return c.json(comments);
   } catch (err: any) {
     return c.json({ error: 'Failed to fetch comments: ' + err.message }, 500);
   }
@@ -718,31 +758,93 @@ app.post('/topics/:id/comments', async (c) => {
     const id = crypto.randomUUID();
     const timestamp = new Date().toISOString();
 
-    try {
-      await db
-        .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
-        .bind(id, topicId, userEmail, content, timestamp)
-        .run();
-    } catch (err) {
-      console.error('Failed to insert comment:', err);
-      throw new Error('Comment insert failed: ' + err);
-    }
+    await db
+      .prepare('INSERT INTO comments (id, topic_id, user_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, topicId, userEmail, content, timestamp)
+      .run();
 
     const comment = { id, topic_id: topicId, user: userEmail, content, created_at: timestamp };
 
-    // Notify DO to broadcast (fire and forget, don't await)
-    chat.get(chat.idFromName('global-chat')).fetch(
-      new Request('http://internal/broadcast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'new-comment', data: comment }),
-      })
-    ).catch((err: any) => console.error('DO broadcast error:', err));
+    // Notify DO to broadcast (via fetch with data in header, non-blocking)
+    try {
+      const doStub = chat.get(chat.idFromName('global-chat'));
+      const broadcastPromise = doStub.fetch(
+        new Request('http://internal/broadcast', {
+          method: 'POST',
+          headers: {
+            'X-Message': JSON.stringify({ type: 'new-comment', data: comment })
+          }
+        })
+      ).catch((err: any) => {
+        console.error('DO broadcast error:', err.message);
+      });
+
+      // Keep Worker context alive until DO responds
+      c.executionCtx.waitUntil(broadcastPromise);
+    } catch (e: any) {
+      console.error('DO fetch error:', e.message);
+    }
 
     return c.json(comment, 201);
   } catch (err: any) {
     console.error('Comment post error:', err.message, err.stack);
     return c.json({ error: 'Failed to post comment: ' + err.message }, 500);
+  }
+});
+
+app.delete('/topics/:id/comments/:commentId', async (c) => {
+  const db = c.env.DB;
+  const chat = c.env.CHAT;
+  const userEmail = c.get('userEmail');
+  const isAdmin = c.get('isAdmin');
+  const topicId = c.req.param('id');
+  const commentId = c.req.param('commentId');
+
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  try {
+    // Fetch comment to verify ownership
+    const comment = await db
+      .prepare('SELECT * FROM comments WHERE id = ? AND topic_id = ?')
+      .bind(commentId, topicId)
+      .first();
+
+    if (!comment) {
+      return c.json({ error: 'Comment not found' }, 404);
+    }
+
+    // Check if user is owner or admin
+    if (comment.user_id !== userEmail && !isAdmin) {
+      return c.json({ error: 'Can only delete your own comments' }, 403);
+    }
+
+    // Delete comment
+    await db.prepare('DELETE FROM comments WHERE id = ?').bind(commentId).run();
+
+    // Broadcast deletion to all clients
+    try {
+      const doStub = chat.get(chat.idFromName('global-chat'));
+      const broadcastPromise = doStub.fetch(
+        new Request('http://internal/broadcast', {
+          method: 'POST',
+          headers: {
+            'X-Message': JSON.stringify({ type: 'delete-comment', data: { id: commentId, topic_id: topicId } })
+          }
+        })
+      ).catch((err: any) => {
+        console.error('DO broadcast error:', err.message);
+      });
+
+      c.executionCtx.waitUntil(broadcastPromise);
+    } catch (e: any) {
+      console.error('DO fetch error:', e.message);
+    }
+
+    return c.json({ ok: true });
+  } catch (err: any) {
+    return c.json({ error: 'Failed to delete comment: ' + err.message }, 500);
   }
 });
 
@@ -792,6 +894,7 @@ app.get('/topics/:id/chat', async (c) => {
   const topicId = c.req.param('id');
   const db = c.env.DB;
   const userEmail = c.get('userEmail');
+  const isAdmin = c.get('isAdmin');
 
   if (!userEmail) {
     return c.html('<h1>Not Authenticated</h1><p>Please log in via CF Access</p>');
@@ -812,33 +915,65 @@ app.get('/topics/:id/chat', async (c) => {
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; }
-        .container { max-width: 900px; margin: 0 auto; display: flex; height: 100vh; }
-        .sidebar { width: 250px; background: #fff; border-right: 1px solid #ddd; padding: 20px; overflow-y: auto; }
-        .main { flex: 1; display: flex; flex-direction: column; }
-        .header { background: #fff; padding: 20px; border-bottom: 1px solid #ddd; }
-        .comments-area { flex: 1; overflow-y: auto; padding: 20px; }
-        .comment { background: #fff; margin-bottom: 15px; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
-        .comment-meta { font-size: 12px; color: #666; margin-bottom: 8px; }
-        .comment-user { font-weight: bold; }
-        .comment-content { line-height: 1.6; }
+        .container { max-width: 1000px; margin: 0 auto; display: flex; height: 100vh; }
+        .sidebar { width: 280px; background: #fff; border-right: 1px solid #e0e0e0; padding: 20px; overflow-y: auto; }
+        .sidebar h3 { font-size: 16px; margin: 15px 0 8px 0; color: #333; }
+        .sidebar p { font-size: 13px; color: #888; line-height: 1.4; }
+        .main { flex: 1; display: flex; flex-direction: column; background: #f9f9f9; }
+        .header { background: #fff; padding: 20px; border-bottom: 1px solid #e0e0e0; }
+        .header h1 { font-size: 22px; margin-bottom: 5px; }
+        .header small { color: #999; }
+        .comments-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .comment { background: #fff; padding: 15px; border-radius: 6px; border: 1px solid #e8e8e8; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .comment:hover { border-color: #d0d0d0; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .comment-meta { font-size: 12px; color: #888; margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+        .comment-user { font-weight: 600; color: #333; }
+        .comment-time { color: #aaa; }
+        .comment-content { line-height: 1.6; color: #444; font-size: 15px; }
+        .comment-content p { margin: 8px 0; }
+        .comment-content p:first-child { margin-top: 0; }
+        .comment-content p:last-child { margin-bottom: 0; }
         .comment-content img { max-width: 100%; border-radius: 4px; margin: 10px 0; }
-        .comment-content code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
-        .comment-content pre { background: #f0f0f0; padding: 10px; border-radius: 4px; overflow-x: auto; margin: 10px 0; }
-        .editor-area { background: #fff; padding: 20px; border-top: 1px solid #ddd; }
+        .comment-content code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 13px; color: #c7254e; }
+        .comment-content pre { background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto; margin: 10px 0; border-left: 3px solid #007bff; }
+        .comment-content pre code { background: none; color: inherit; padding: 0; }
+        .comment-actions { margin-top: 8px; display: flex; gap: 8px; }
+        .comment-delete { background: none; border: none; color: #dc3545; cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; }
+        .comment-delete:hover { color: #c82333; }
+        .editor-area { background: #fff; padding: 20px; border-top: 1px solid #e0e0e0; }
         .editor-container { display: flex; gap: 15px; }
         .editor-input { flex: 1; display: flex; flex-direction: column; }
-        .preview { flex: 0 0 40%; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; padding: 10px; overflow-y: auto; max-height: 200px; }
-        textarea { width: 100%; min-height: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 14px; resize: vertical; }
-        .editor-tools { margin-top: 10px; display: flex; gap: 10px; }
-        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .preview { flex: 0 0 35%; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; overflow-y: auto; max-height: 180px; font-size: 13px; line-height: 1.5; }
+        textarea { width: 100%; min-height: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Courier New', monospace; font-size: 14px; resize: vertical; }
+        textarea:focus { outline: none; border-color: #007bff; box-shadow: 0 0 0 2px rgba(0,123,255,0.1); }
+        .editor-tools { margin-top: 10px; display: flex; gap: 10px; align-items: center; }
+        button { background: #007bff; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; }
         button:hover { background: #0056b3; }
-        .upload-area { border: 2px dashed #007bff; border-radius: 4px; padding: 20px; text-align: center; background: #f0f7ff; cursor: pointer; }
-        .upload-area.active { background: #007bff; color: white; }
-        .status { font-size: 12px; color: #666; margin-top: 5px; }
-        .loading { color: #0066cc; }
-        h1 { font-size: 24px; margin: 0; }
-        .back-link { color: #007bff; text-decoration: none; font-size: 14px; }
+        button:active { transform: scale(0.98); }
+        .upload-area { border: 2px dashed #ccc; border-radius: 4px; padding: 15px; text-align: center; background: #fafafa; cursor: pointer; font-size: 13px; color: #666; flex: 1; }
+        .upload-area:hover { border-color: #007bff; background: #f0f7ff; }
+        .upload-area.active { background: #007bff; color: white; border-color: #007bff; }
+        .status { font-size: 12px; color: #666; margin-top: 5px; min-height: 18px; }
+        .status.ok { color: #28a745; }
+        .status.error { color: #dc3545; }
+        .status.loading { color: #0066cc; }
+        h1 { font-size: 20px; margin: 0; }
+        .back-link { color: #007bff; text-decoration: none; font-size: 13px; display: inline-block; margin-bottom: 15px; }
         .back-link:hover { text-decoration: underline; }
+        .header-tools { display: flex; justify-content: space-between; align-items: center; }
+        .delete-topic-btn { background: #dc3545; color: white; padding: 6px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; }
+        .delete-topic-btn:hover { background: #c82333; }
+        .chat-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .chat-modal.active { display: flex; }
+        .chat-modal-content { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-width: 400px; text-align: center; }
+        .chat-modal-content h2 { margin-bottom: 15px; color: #333; }
+        .chat-modal-content p { color: #666; margin-bottom: 20px; line-height: 1.5; }
+        .chat-modal-actions { display: flex; gap: 10px; justify-content: center; }
+        .chat-modal-actions button { padding: 8px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .confirm-delete { background: #dc3545; color: white; }
+        .confirm-delete:hover { background: #c82333; }
+        .cancel-delete { background: #6c757d; color: white; }
+        .cancel-delete:hover { background: #5a6268; }
       </style>
     </head>
     <body>
@@ -851,8 +986,13 @@ app.get('/topics/:id/chat', async (c) => {
 
         <div class="main">
           <div class="header">
-            <h1>${topic.title}</h1>
-            <small style="color: #666;">Logged in as: ${userEmail}</small>
+            <div class="header-tools">
+              <div>
+                <h1>${topic.title}</h1>
+                <small style="color: #666;">Logged in as: ${userEmail}</small>
+              </div>
+              ${isAdmin ? `<button class="delete-topic-btn" onclick="showChatDeleteModal()">Delete Topic</button>` : ''}
+            </div>
           </div>
 
           <div class="comments-area" id="comments"></div>
@@ -876,6 +1016,17 @@ app.get('/topics/:id/chat', async (c) => {
         </div>
       </div>
 
+      <div class="chat-modal" id="chatDeleteModal">
+        <div class="chat-modal-content">
+          <h2>Delete Topic?</h2>
+          <p>Delete "${topic.title}" and all <span id="chatMessageCount">0</span> messages? This cannot be undone.</p>
+          <div class="chat-modal-actions">
+            <button class="confirm-delete" onclick="confirmChatDelete()">Delete</button>
+            <button class="cancel-delete" onclick="closeChatDeleteModal()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.min.js"></script>
       <script>
         const topicId = '${topicId}';
@@ -883,10 +1034,29 @@ app.get('/topics/:id/chat', async (c) => {
         let ws = null;
         let messages = new Map();
 
-        // Wait for marked to load
+        function showChatDeleteModal() {
+          document.getElementById('chatMessageCount').textContent = messages.size;
+          document.getElementById('chatDeleteModal').classList.add('active');
+        }
+
+        function closeChatDeleteModal() {
+          document.getElementById('chatDeleteModal').classList.remove('active');
+        }
+
+        async function confirmChatDelete() {
+          const res = await fetch(\`/topics/\${topicId}\`, { method: 'DELETE' });
+          if (res.ok) {
+            window.location.href = '/topics';
+          } else {
+            const err = await res.json();
+            alert('Error: ' + (err.error || 'Failed to delete'));
+            closeChatDeleteModal();
+          }
+        }
+
+        // Wait for marked to load (with timeout)
         function waitForMarked(callback) {
           if (window.marked && (typeof window.marked === 'function' || typeof window.marked.parse === 'function')) {
-            console.log('marked ready!');
             callback();
           } else {
             setTimeout(() => waitForMarked(callback), 100);
@@ -895,40 +1065,42 @@ app.get('/topics/:id/chat', async (c) => {
 
         // Load initial comments
         async function loadComments() {
-          const res = await fetch(\`/topics/\${topicId}/comments\`);
-          const comments = await res.json();
-          comments.forEach(c => messages.set(c.id, c));
-          renderComments();
+          try {
+            const res = await fetch(\`/topics/\${topicId}/comments\`);
+            const comments = await res.json();
+            comments.forEach(c => messages.set(c.id, c));
+            renderComments();
+          } catch (err) {
+            console.error('Failed to load comments:', err);
+            updateStatus('Failed to load messages', 'error');
+          }
         }
 
-        // Connect WebSocket
+        // Connect WebSocket (no dependencies, connect immediately)
         function connectWebSocket() {
-          console.log('connectWebSocket called');
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
           const wsUrl = \`\${protocol}//\${window.location.host}/ws\`;
-          console.log('Connecting to:', wsUrl);
           ws = new WebSocket(wsUrl);
-          ws.onopen = () => console.log('WebSocket connected!');
-          ws.onerror = (err) => console.error('WebSocket error:', err);
-          ws.onclose = () => console.log('WebSocket closed');
+          ws.onopen = () => updateStatus('Connected', 'ok');
+          ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+            updateStatus('Connection failed', 'error');
+          };
+          ws.onclose = () => updateStatus('Disconnected', 'error');
           ws.onmessage = (event) => {
-            console.log('WebSocket message received:', event.data);
             try {
               const msg = JSON.parse(event.data);
               if (msg.type === 'new-comment' && msg.data.topic_id === topicId) {
                 messages.set(msg.data.id, msg.data);
                 renderComments();
+              } else if (msg.type === 'delete-comment' && msg.data.topic_id === topicId) {
+                messages.delete(msg.data.id);
+                renderComments();
               }
             } catch (err) {
-              console.error('WebSocket message error:', err);
+              console.error('Message parse error:', err);
             }
           };
-          ws.onerror = (err) => {
-            console.error('WebSocket error:', err);
-            updateStatus('WebSocket connection failed', 'error');
-          };
-          ws.onopen = () => updateStatus('Connected', 'ok');
-          ws.onclose = () => updateStatus('Disconnected', 'error');
         }
 
         // Render comments
@@ -937,16 +1109,20 @@ app.get('/topics/:id/chat', async (c) => {
             .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
           const html = sorted.map(c => \`
-            <div class="comment">
+            <div class="comment" id="comment-\${c.id}">
               <div class="comment-meta">
-                <span class="comment-user">\${c.user}</span> •
-                <small>\${new Date(c.created_at).toLocaleString()}</small>
+                <span class="comment-user">\${c.user}</span>
+                <span class="comment-time">\${new Date(c.created_at).toLocaleString()}</span>
               </div>
               <div class="comment-content">\${window.marked ? (typeof window.marked === 'function' ? window.marked(c.content) : window.marked.parse(c.content)) : c.content}</div>
+              \${c.user === userEmail ? \`<div class="comment-actions"><button class="comment-delete" onclick="deleteComment('\${c.id}')">Delete</button></div>\` : ''}
             </div>
           \`).join('');
 
-          document.getElementById('comments').innerHTML = html;
+          const commentsEl = document.getElementById('comments');
+          commentsEl.innerHTML = html;
+          // Auto-scroll to bottom
+          setTimeout(() => commentsEl.scrollTop = commentsEl.scrollHeight, 0);
         }
 
         // Post comment
@@ -1030,15 +1206,34 @@ app.get('/topics/:id/chat', async (c) => {
           }
         }
 
+        // Delete comment
+        function deleteComment(commentId) {
+          if (!confirm('Delete this message?')) return;
+
+          fetch(\`/topics/\${topicId}/comments/\${commentId}\`, {
+            method: 'DELETE'
+          }).then(res => {
+            if (res.ok) {
+              messages.delete(commentId);
+              renderComments();
+            } else {
+              alert('Failed to delete comment');
+            }
+          }).catch(err => {
+            console.error('Delete error:', err);
+            alert('Error deleting comment');
+          });
+        }
+
         // Initialize
-        console.log('Script loaded, waiting for DOM...');
         document.addEventListener('DOMContentLoaded', () => {
-          console.log('DOMContentLoaded fired');
+          // Connect WebSocket immediately (no dependencies)
+          connectWebSocket();
+          loadComments();
+
+          // Setup UI features that depend on marked (preview, rendering)
           waitForMarked(() => {
-            console.log('waitForMarked callback fired');
             setupPreview();
-            loadComments();
-            connectWebSocket();
 
             // Drag and drop
             const uploadArea = document.getElementById('uploadArea');

@@ -3,43 +3,52 @@
 
 export class GlobalChat {
   private state: any;
+  private env: any;
   private connections: Set<any>;
 
-  constructor(state: any) {
+  constructor(state: any, env: any) {
     this.state = state;
+    this.env = env;
     this.connections = new Set();
   }
 
   async fetch(req: any): Promise<any> {
     const url = new URL(req.url);
-    console.log('DO fetch called:', req.method, url.pathname, 'upgrade:', req.headers.get('upgrade'));
 
-    // WebSocket upgrade (check both cases)
+    // WebSocket upgrade
     const upgradeHeader = req.headers.get('upgrade') || req.headers.get('Upgrade');
     if (upgradeHeader === 'websocket') {
-      console.log('WebSocket upgrade detected');
       try {
         // Create WebSocket pair (client for browser, server for DO)
         const pair = new (globalThis as any).WebSocketPair();
 
-        // Accept connection on server side (only call once)
+        // Accept connection on server side
         pair[1].accept();
 
-        // Add handlers (don't call accept again)
+        // Add handlers
         this.handleWebSocket(pair[1]);
 
         // Return client side to browser
         return new Response(null, { status: 101, webSocket: pair[0] } as any);
       } catch (err) {
         console.error('WebSocket upgrade error:', err);
-        return new Response('WebSocket upgrade failed: ' + err, { status: 500 });
+        return new Response('WebSocket upgrade failed', { status: 500 });
       }
     }
 
     // Broadcast endpoint (for internal calls)
     if (req.method === 'POST' && url.pathname === '/broadcast') {
-      const msg = await req.json();
-      this.broadcast(msg);
+      try {
+        const msgHeader = req.headers.get('X-Message');
+        if (!msgHeader) {
+          return new Response(JSON.stringify({ error: 'Missing X-Message header' }), { status: 400 });
+        }
+        const msg = JSON.parse(msgHeader);
+        this.broadcast(msg);
+      } catch (err) {
+        console.error('Broadcast error:', err);
+        return new Response(JSON.stringify({ error: 'Parse error' }), { status: 400 });
+      }
       return new Response(JSON.stringify({ ok: true }));
     }
 
@@ -50,18 +59,15 @@ export class GlobalChat {
     try {
       this.connections.add(ws);
 
-      // Message handler
       ws.onmessage = (event: any) => {
         try {
           const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-          // Broadcast to all connected (including sender)
           this.broadcast(msg);
         } catch (err) {
-          console.error('Invalid message:', err);
+          console.error('Message parse error:', err);
         }
       };
 
-      // Close handler
       ws.onclose = () => {
         this.connections.delete(ws);
       };
