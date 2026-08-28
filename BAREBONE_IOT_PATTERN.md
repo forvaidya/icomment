@@ -74,17 +74,46 @@ Authorization: Bearer {device_token}
 
 Tokens are stored in `IOT_KV` namespace as: `iot:tokens:{token} → device_id`
 
-**Setup tokens (admin only):**
-```bash
-curl -X POST https://worker.com/admin/iot/setup-tokens \
-  -H "Cf-Access-Jwt-Assertion: {admin_jwt}"
-```
+**Token Sources:**
 
-Creates 4 test tokens:
-- `iot-token-sensor-1` → `sensor-lobby-1`
-- `iot-token-charger-1` → `charger-parking-1`
-- `iot-token-lock-1` → `lock-door-1`
-- `iot-token-counter-1` → `counter-inventory-1`
+1. **User Login → Device Token** (for testing/dashboard)
+   ```bash
+   POST /api/iot/token
+   Cf-Access-Jwt-Assertion: {user_jwt}
+   
+   Response: {
+     "ok": true,
+     "token": "uuid",
+     "device_id": "user-{username}-{uuid}",
+     "expires_in": 86400
+   }
+   ```
+
+2. **Admin Setup** (hardcoded test tokens, dev/testing)
+   ```bash
+   POST /admin/iot/setup-tokens
+   Cf-Access-Jwt-Assertion: {admin_jwt}  (or X-Dev-Override: true locally)
+   
+   Creates: iot-token-{type}-1 → {type}-{location}-1
+   ```
+
+3. **Predefined Device Tokens** (production)
+   - Managed via dashboard or API
+   - Scoped to device type + location
+   - Can be rotated/revoked
+
+**Flow:**
+```
+User logs in → JWT issued
+  ↓
+POST /api/iot/token with JWT → Device token generated
+  ↓
+Device token stored in IOT_KV
+  ↓
+Use device token to POST /ingest or GET /subscribe
+  ↓
+Token validated against IOT_KV on every request
+```
 
 ### POST /ingest (Device publishes)
 
@@ -250,7 +279,7 @@ npm install -g wscat
 npm install -g ts-node
 ```
 
-### Test Flow
+### Test Flow: Device Tokens (Admin Setup)
 
 ```bash
 # Terminal 1: Setup tokens (admin only, dev override for local)
@@ -274,6 +303,39 @@ curl -X POST http://localhost:8787/ingest \
 # Terminal 2: Verify
 # Should see message in real-time:
 # {"id":"...","device_id":"sensor-lobby-1","payload":{...},"timestamp":"..."}
+```
+
+### Test Flow: User Login → Device Token
+
+```bash
+# Terminal 1: Get device token via login (simulated JWT)
+JWT="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJhdWQiOiJ0ZXN0In0.test"
+
+curl -X POST http://localhost:8787/api/iot/token \
+  -H "Cf-Access-Jwt-Assertion: $JWT"
+
+# Response: {
+#   "ok": true,
+#   "token": "550e8400-e29b-41d4-a716-446655440000",
+#   "device_id": "user-user-550e8400",
+#   "expires_in": 86400
+# }
+
+TOKEN="550e8400-e29b-41d4-a716-446655440000"
+DEVICE_ID="user-user-550e8400"
+
+# Terminal 2: Subscribe with user device token
+wscat -c ws://localhost:8787/subscribe \
+  -H "Authorization: Bearer $TOKEN"
+
+# Terminal 3: Post message using user device token
+curl -X POST http://localhost:8787/ingest \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"device_id\":\"$DEVICE_ID\",\"message\":\"test\"}"
+
+# Terminal 2: Verify
+# Should see real-time message from user device
 ```
 
 **Test auth rejection:**

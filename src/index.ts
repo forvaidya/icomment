@@ -1653,6 +1653,50 @@ app.post('/admin/iot/setup-tokens', async (c) => {
   }
 });
 
+// User: Get IoT token via login (exchange JWT for device token)
+app.post('/api/iot/token', async (c) => {
+  const userEmail = c.get('userEmail');
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  try {
+    const kv = c.env.IOT_KV;
+    const tokenId = crypto.randomUUID();
+    const deviceId = `user-${userEmail.split('@')[0]}-${tokenId.slice(0, 8)}`;
+
+    // Store token → deviceId mapping
+    await kv.put(`iot:tokens:${tokenId}`, deviceId);
+
+    return c.json({
+      ok: true,
+      token: tokenId,
+      device_id: deviceId,
+      user_email: userEmail,
+      expires_in: 86400 // 24 hours (info only, not enforced yet)
+    }, 200);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// User: List their IoT tokens (future: revoke, rotate)
+app.get('/api/iot/tokens', async (c) => {
+  const userEmail = c.get('userEmail');
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  // Future: list tokens for this user from KV
+  // For now, just return empty (tokens are ephemeral in this design)
+  return c.json({
+    ok: true,
+    user_email: userEmail,
+    tokens: [], // TODO: implement token persistence per user
+    message: 'Use POST /api/iot/token to generate a new token'
+  });
+});
+
 // IoT endpoints
 app.post('/ingest', async (c) => {
   try {
