@@ -149,7 +149,7 @@ app.get('/', async (c) => {
               <strong>Valid for:</strong> 7 days | <strong>Secret:</strong> CF Secrets (shushma-shrikrishna)
             </p>
           ` : ''}
-
+        </div>
 
         <div style="margin-top: 20px; color: #666;">
           <p><strong>Progress:</strong></p>
