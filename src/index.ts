@@ -145,7 +145,10 @@ app.get('/', async (c) => {
               })()}
             </p>
             <p style="color: #666; font-size: 12px; margin-top: 8px;">
-              <strong>Use in requests:</strong> curl -H "Authorization: Bearer {token}" http://localhost:8787/api/iot/token<br/>
+              <strong>Validate token:</strong><br/>
+              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all;">curl -H "Authorization: Bearer {token}" ${c.req.url.split('/').slice(0,3).join('/')}/validate</code><br/><br/>
+              <strong>Use in API requests:</strong><br/>
+              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all;">curl -H "Authorization: Bearer {token}" ${c.req.url.split('/').slice(0,3).join('/')}/api/iot/token</code><br/><br/>
               <strong>Valid for:</strong> 7 days
             </p>
           ` : ''}
@@ -1719,6 +1722,55 @@ app.get('/api/iot/tokens', async (c) => {
     tokens: [], // TODO: implement token persistence per user
     message: 'Use POST /api/iot/token to generate a new token'
   });
+});
+
+// Validate JWT token
+app.get('/validate', async (c) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Missing or invalid Authorization header' }, 401);
+  }
+
+  const token = authHeader.substring(7);
+  const secret = c.env.JWT_SECRET;
+
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return c.json({ error: 'Invalid token format' }, 401);
+    }
+
+    const [headerB64, payloadB64, signatureB64] = parts;
+    const payload = JSON.parse(atob(payloadB64));
+
+    // Check expiration
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) {
+      return c.json({ error: 'Token expired', exp: payload.exp, now }, 401);
+    }
+
+    // Verify signature using SubtleCrypto
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret);
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+    const messageBuffer = encoder.encode(`${headerB64}.${payloadB64}`);
+    const signatureBuffer = Uint8Array.from(atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+    const isValid = await crypto.subtle.verify('HMAC', key, signatureBuffer, messageBuffer);
+
+    if (!isValid) {
+      return c.json({ error: 'Invalid signature' }, 401);
+    }
+
+    return c.json({
+      ok: true,
+      valid: true,
+      claims: payload,
+      message: 'Token is valid and can be used for API requests'
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Token validation failed: ' + err.message }, 401);
+  }
 });
 
 // Generate JWT access token (for frontend testing)
