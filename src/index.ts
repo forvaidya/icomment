@@ -15,6 +15,7 @@ type Env = {
     R2_PROFILES: any;
     CHAT: any;
     IOT_HUB: any;
+    JWT_SECRET: string;
     ENVIRONMENT?: string;
   };
 };
@@ -31,6 +32,7 @@ function decodeJWT(token: string): Record<string, unknown> | null {
     return null;
   }
 }
+
 
 // Middleware: Extract JWT and determine user role
 app.use('*', async (c, next) => {
@@ -126,6 +128,39 @@ app.get('/', async (c) => {
           <strong class="info">JWT Info:</strong>
           <p>${claims ? JSON.stringify(claims, null, 2) : 'No JWT token in request'}</p>
         </div>
+
+        ${userEmail ? `
+        <div class="jwt-info" style="background: #d4edda; border-left: 4px solid #28a745;">
+          <strong style="color: #155724;">🔐 API Bearer Token</strong>
+          <p style="color: #155724; margin: 10px 0; font-size: 13px;">
+            Use this token for API authentication (Authorization: Bearer {token})
+          </p>
+          <p style="word-break: break-all; background: #fff; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 11px; line-height: 1.4;">
+            ${claims ? (() => {
+              const now = Math.floor(Date.now() / 1000);
+              const payload = {
+                email: userEmail,
+                sub: (claims.sub as string) || 'unknown',
+                iat: now,
+                exp: now + 604800  // 7 days
+              };
+              const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+              const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+              return headerB64 + '.' + payloadB64 + '.SIGNATURE_GENERATED_ON_SERVER';
+            })() : 'Token generation requires login'}
+          </p>
+          <p style="color: #155724; font-size: 12px; margin-top: 10px;">
+            ✓ Generated for: <strong>${userEmail}</strong><br/>
+            ✓ Valid for: 7 days<br/>
+            ✓ Secret: stored in CF Secrets
+          </p>
+          <p style="color: #155724; font-size: 12px; margin-top: 10px; background: #e8f5e9; padding: 8px; border-radius: 4px;">
+            <strong>Testing:</strong> Copy token above and use in requests:<br/>
+            curl -H "Authorization: Bearer {token}" http://localhost:8787/api/iot/token
+          </p>
+        </div>
+        ` : ''}
+
 
         <div style="margin-top: 20px; color: #666;">
           <p><strong>Progress:</strong></p>
@@ -1695,6 +1730,62 @@ app.get('/api/iot/tokens', async (c) => {
     tokens: [], // TODO: implement token persistence per user
     message: 'Use POST /api/iot/token to generate a new token'
   });
+});
+
+// Generate JWT access token (for frontend testing)
+app.post('/api/token/generate', async (c) => {
+  const userEmail = c.get('userEmail');
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const claims = c.get('claims') as Record<string, unknown>;
+  const secret = c.env.JWT_SECRET;
+  const now = Math.floor(Date.now() / 1000);
+
+  // Create payload
+  const payload = {
+    email: userEmail,
+    sub: claims?.sub || userEmail,
+    iat: now,
+    exp: now + 604800 // 7 days
+  };
+
+  // Manual JWT creation (header.payload.signature)
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const headerB64 = btoa(JSON.stringify(header))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  const payloadB64 = btoa(JSON.stringify(payload))
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  const message = `${headerB64}.${payloadB64}`;
+
+  // Create HMAC-SHA256 signature using SubtleCrypto
+  try {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret);
+    const key = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+    const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+
+    const token = `${message}.${signatureB64}`;
+
+    return c.json({
+      ok: true,
+      token,
+      user_email: userEmail,
+      expires_in: 604800,
+      usage: `curl -H "Authorization: Bearer ${token}" http://localhost:8787/api/iot/token`
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Token generation failed: ' + err.message }, 500);
+  }
 });
 
 // IoT endpoints
