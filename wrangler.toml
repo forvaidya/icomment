@@ -14,6 +14,12 @@ binding = "KV_ADMIN"
 id = "42aac3233a734f66835313dd75ed887c"
 preview_id = "42aac3233a734f66835313dd75ed887c"
 
+# KV Namespace Binding for IoT Device Tokens
+[[kv_namespaces]]
+binding = "IOT_KV"
+id = "42aac3233a734f66835313dd75ed887c"
+preview_id = "42aac3233a734f66835313dd75ed887c"
+
 # R2 Bucket Binding for Profile Images
 [[r2_buckets]]
 binding = "R2_PROFILES"
@@ -24,10 +30,19 @@ bucket_name = "psychomments-profiles"
 name = "CHAT"
 class_name = "GlobalChat"
 
+# Durable Object Binding for IoT Hub
+[[durable_objects.bindings]]
+name = "IOT_HUB"
+class_name = "IotHub"
+
 # Durable Object Migration
 [[migrations]]
 tag = "v3"
 new_sqlite_classes = ["GlobalChat"]
+
+[[migrations]]
+tag = "v4-iot-hub"
+new_sqlite_classes = ["IotHub"]
 
 # CF Access Configuration
 # The JWT from CF Access is passed in the Cf-Access-Jwt-Assertion header.

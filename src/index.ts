@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { GlobalChat } from './durable-objects/global-chat';
+import { IotHub } from './durable-objects/iot-hub';
 
 type Env = {
   Variables: {
@@ -10,8 +11,10 @@ type Env = {
   Bindings: {
     DB: any;
     KV_ADMIN: any;
+    IOT_KV: any;
     R2_PROFILES: any;
     CHAT: any;
+    IOT_HUB: any;
     ENVIRONMENT?: string;
   };
 };
@@ -658,6 +661,143 @@ app.get('/topics/:id', async (c) => {
   return c.json(result);
 });
 
+app.put('/topics/:id', async (c) => {
+  const isAdmin = c.get('isAdmin');
+  if (!isAdmin) {
+    return c.json({ error: 'Only admins can edit topics' }, 403);
+  }
+
+  const userEmail = c.get('userEmail');
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
+  }
+
+  const db = c.env.DB;
+  const topicId = c.req.param('id');
+  const body = await c.req.json();
+  const { title, description } = body;
+
+  // Fetch current topic
+  const topic = await db.prepare('SELECT * FROM topics WHERE id = ?').bind(topicId).first();
+  if (!topic) {
+    return c.json({ error: 'Topic not found' }, 404);
+  }
+
+  // Check if anything changed
+  const titleChanged = title && title !== topic.title;
+  const descChanged = description !== undefined && description !== topic.description;
+
+  if (!titleChanged && !descChanged) {
+    return c.json({ error: 'No changes' }, 400);
+  }
+
+  try {
+    // Record edit history
+    const editId = crypto.randomUUID();
+    await db
+      .prepare(`
+        INSERT INTO topic_edits (id, topic_id, old_title, new_title, old_description, new_description, edited_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      .bind(
+        editId,
+        topicId,
+        titleChanged ? topic.title : null,
+        titleChanged ? title : null,
+        descChanged ? topic.description : null,
+        descChanged ? description : null,
+        userEmail
+      )
+      .run();
+
+    // Update topic
+    await db
+      .prepare('UPDATE topics SET title = ?, description = ? WHERE id = ?')
+      .bind(
+        title || topic.title,
+        description !== undefined ? description : topic.description,
+        topicId
+      )
+      .run();
+
+    const updated = await db.prepare('SELECT * FROM topics WHERE id = ?').bind(topicId).first();
+    return c.json(updated);
+  } catch (err: any) {
+    return c.json({ error: 'Failed to update topic: ' + err.message }, 500);
+  }
+});
+
+app.get('/topics/:id/edits', async (c) => {
+  const db = c.env.DB;
+  const topicId = c.req.param('id');
+
+  try {
+    const result = await db
+      .prepare('SELECT * FROM topic_edits WHERE topic_id = ? ORDER BY edited_at DESC')
+      .bind(topicId)
+      .all();
+
+    return c.json(result.results || []);
+  } catch (err: any) {
+    return c.json({ error: 'Failed to fetch history: ' + err.message }, 500);
+  }
+});
+
+// Cleanup: Delete all R2 images for a topic (admin only)
+app.delete('/admin/topics/:id/cleanup-images', async (c) => {
+  const isAdmin = c.get('isAdmin');
+  if (!isAdmin) {
+    return c.json({ error: 'Only admins can cleanup' }, 403);
+  }
+
+  const r2 = c.env.R2_PROFILES;
+  const topicId = c.req.param('id');
+
+  try {
+    let deletedCount = 0;
+
+    // Delete active images
+    const prefix = `comments/${topicId}/`;
+    let cursor: string | undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+      const listResult = await r2.list({ prefix, cursor });
+      if (listResult.objects && listResult.objects.length > 0) {
+        for (const obj of listResult.objects) {
+          await r2.delete(obj.key);
+          deletedCount++;
+        }
+      }
+      cursor = listResult.cursor;
+      hasMore = listResult.delimitedPrefixes && listResult.delimitedPrefixes.length > 0;
+    }
+
+    // Delete archived images for this topic
+    const archivedPrefix = `archived/`;
+    cursor = undefined;
+    hasMore = true;
+
+    while (hasMore) {
+      const listResult: any = await r2.list({ prefix: archivedPrefix, cursor });
+      if (listResult.objects && listResult.objects.length > 0) {
+        for (const obj of listResult.objects) {
+          if (obj.key.includes(`comments/${topicId}/`)) {
+            await r2.delete(obj.key);
+            deletedCount++;
+          }
+        }
+      }
+      cursor = listResult.cursor;
+      hasMore = !!cursor;
+    }
+
+    return c.json({ ok: true, deleted: deletedCount });
+  } catch (err: any) {
+    return c.json({ error: 'Failed to cleanup images: ' + err.message }, 500);
+  }
+});
+
 app.delete('/topics/:id', async (c) => {
   const isAdmin = c.get('isAdmin');
   if (!isAdmin) {
@@ -795,6 +935,7 @@ app.post('/topics/:id/comments', async (c) => {
 app.delete('/topics/:id/comments/:commentId', async (c) => {
   const db = c.env.DB;
   const chat = c.env.CHAT;
+  const r2 = c.env.R2_PROFILES;
   const userEmail = c.get('userEmail');
   const isAdmin = c.get('isAdmin');
   const topicId = c.req.param('id');
@@ -818,6 +959,31 @@ app.delete('/topics/:id/comments/:commentId', async (c) => {
     // Check if user is owner or admin
     if (comment.user_id !== userEmail && !isAdmin) {
       return c.json({ error: 'Can only delete your own comments' }, 403);
+    }
+
+    // Archive images instead of deleting (rename with timestamp)
+    const imageUrls = comment.content.match(/\/image\/([a-f0-9-]+)/g) || [];
+    for (const match of imageUrls) {
+      const imageId = match.split('/').pop();
+      try {
+        const prefix = `comments/${topicId}/${imageId}-`;
+        const listResult = await r2.list({ prefix });
+        if (listResult.objects && listResult.objects.length > 0) {
+          const oldKey = listResult.objects[0].key;
+          const timestamp = Date.now();
+          const newKey = `archived/${timestamp}-${oldKey}`;
+          const obj = await r2.get(oldKey);
+          if (obj) {
+            await r2.put(newKey, obj.body, {
+              httpMetadata: obj.httpMetadata,
+            });
+            await r2.delete(oldKey);
+          }
+        }
+      } catch (err) {
+        console.error('Image archive error:', err);
+        // Continue even if image archival fails
+      }
     }
 
     // Delete comment
@@ -858,35 +1024,80 @@ app.post('/topics/:id/comments/upload-image', async (c) => {
     return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const form = await c.req.formData();
-  const file = form.get('file') as any;
+  try {
+    const form = await c.req.formData();
+    const file = form.get('file') as any;
 
-  if (!file) {
-    return c.json({ error: 'No file provided' }, 400);
+    if (!file) {
+      return c.json({ error: 'No file provided' }, 400);
+    }
+
+    const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    const MAX_SIZE = 5 * 1024 * 1024;
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return c.json({ error: `Invalid file type: ${file.type}. Allowed: jpg, png, webp, gif` }, 400);
+    }
+
+    if (file.size > MAX_SIZE) {
+      return c.json({ error: `File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max: 5MB` }, 400);
+    }
+
+    const timestamp = Date.now();
+    const imageId = crypto.randomUUID();
+    const filename = `comments/${topicId}/${imageId}-${file.name}`;
+
+    const buffer = await file.arrayBuffer();
+    await r2.put(filename, buffer, {
+      httpMetadata: { contentType: file.type },
+    });
+
+    // Return authenticated proxy URL (not direct R2 URL)
+    const proxyUrl = `/topics/${topicId}/image/${imageId}`;
+    return c.json({ url: proxyUrl });
+  } catch (err: any) {
+    console.error('R2 upload error:', err.message);
+    return c.json({ error: `Upload failed: ${err.message}` }, 500);
+  }
+});
+
+// Authenticated image proxy - only accessible if authenticated
+app.get('/topics/:id/image/:imageId', async (c) => {
+  const userEmail = c.get('userEmail');
+  if (!userEmail) {
+    return c.json({ error: 'Not authenticated' }, 401);
   }
 
-  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  const MAX_SIZE = 5 * 1024 * 1024;
+  const r2 = c.env.R2_PROFILES;
+  const topicId = c.req.param('id');
+  const imageId = c.req.param('imageId');
 
-  if (!ALLOWED_TYPES.includes(file.type)) {
-    return c.json({ error: 'Invalid file type. Allowed: jpg, png, webp, gif' }, 400);
+  try {
+    // List objects to find matching image (imageId is UUID, stored as imageId-filename)
+    const prefix = `comments/${topicId}/${imageId}-`;
+    const listResult = await r2.list({ prefix });
+
+    if (!listResult.objects || listResult.objects.length === 0) {
+      return c.json({ error: 'Image not found' }, 404);
+    }
+
+    const objectKey = listResult.objects[0].key;
+    const obj = await r2.get(objectKey);
+
+    if (!obj) {
+      return c.json({ error: 'Image not found' }, 404);
+    }
+
+    return new Response(obj.body, {
+      headers: {
+        'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
+  } catch (err: any) {
+    console.error('Image fetch error:', err.message);
+    return c.json({ error: 'Failed to fetch image' }, 500);
   }
-
-  if (file.size > MAX_SIZE) {
-    return c.json({ error: 'File too large. Max: 5MB' }, 400);
-  }
-
-  const timestamp = Date.now();
-  const filename = `comments/${topicId}/${timestamp}-${file.name}`;
-
-  const buffer = await file.arrayBuffer();
-  await r2.put(filename, buffer, {
-    httpMetadata: { contentType: file.type },
-  });
-
-  const publicUrl = `https://psychomments.cdn.r2.io/${filename}`;
-
-  return c.json({ url: publicUrl });
 });
 
 // Chat UI page
@@ -974,6 +1185,26 @@ app.get('/topics/:id/chat', async (c) => {
         .confirm-delete:hover { background: #c82333; }
         .cancel-delete { background: #6c757d; color: white; }
         .cancel-delete:hover { background: #5a6268; }
+        .edit-topic-btn { background: #28a745; color: white; padding: 6px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; margin-left: 8px; }
+        .edit-topic-btn:hover { background: #218838; }
+        .edit-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; overflow-y: auto; }
+        .edit-modal.active { display: flex; }
+        .edit-modal-content { background: white; margin: auto; width: 90%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .edit-modal-header { padding: 20px; border-bottom: 1px solid #e0e0e0; }
+        .edit-modal-header h2 { margin: 0; color: #333; }
+        .edit-modal-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: 600; margin-bottom: 5px; color: #333; font-size: 14px; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px; }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+        .edit-modal-footer { padding: 15px 20px; border-top: 1px solid #e0e0e0; display: flex; gap: 10px; justify-content: flex-end; }
+        .history-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0; }
+        .history-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #333; }
+        .history-item { background: #f9f9f9; padding: 10px; border-radius: 4px; margin-bottom: 8px; font-size: 12px; }
+        .history-item-meta { color: #666; font-size: 11px; margin-bottom: 5px; }
+        .history-change { color: #444; line-height: 1.4; }
+        .history-change .old { text-decoration: line-through; color: #999; }
+        .history-change .new { color: #28a745; font-weight: 500; }
       </style>
     </head>
     <body>
@@ -991,7 +1222,10 @@ app.get('/topics/:id/chat', async (c) => {
                 <h1>${topic.title}</h1>
                 <small style="color: #666;">Logged in as: ${userEmail}</small>
               </div>
-              ${isAdmin ? `<button class="delete-topic-btn" onclick="showChatDeleteModal()">Delete Topic</button>` : ''}
+              <div>
+                ${isAdmin ? `<button class="edit-topic-btn" onclick="showEditModal()">Edit</button>` : ''}
+                ${isAdmin ? `<button class="delete-topic-btn" onclick="showChatDeleteModal()">Delete Topic</button>` : ''}
+              </div>
             </div>
           </div>
 
@@ -1027,6 +1261,32 @@ app.get('/topics/:id/chat', async (c) => {
         </div>
       </div>
 
+      <div class="edit-modal" id="editModal">
+        <div class="edit-modal-content">
+          <div class="edit-modal-header">
+            <h2>Edit Topic</h2>
+          </div>
+          <div class="edit-modal-body">
+            <div class="form-group">
+              <label for="editTitle">Title</label>
+              <input type="text" id="editTitle" value="${topic.title}" placeholder="Topic title">
+            </div>
+            <div class="form-group">
+              <label for="editDesc">Description</label>
+              <textarea id="editDesc" placeholder="Topic description">${topic.description || ''}</textarea>
+            </div>
+            <div class="history-section" id="historySection" style="display: none;">
+              <h3>Edit History</h3>
+              <div id="historyList"></div>
+            </div>
+          </div>
+          <div class="edit-modal-footer">
+            <button onclick="closeEditModal()" class="modal-cancel">Cancel</button>
+            <button onclick="saveTopicEdit()" class="modal-confirm">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
       <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.min.js"></script>
       <script>
         const topicId = '${topicId}';
@@ -1051,6 +1311,65 @@ app.get('/topics/:id/chat', async (c) => {
             const err = await res.json();
             alert('Error: ' + (err.error || 'Failed to delete'));
             closeChatDeleteModal();
+          }
+        }
+
+        async function showEditModal() {
+          document.getElementById('editModal').classList.add('active');
+          // Load history
+          try {
+            const res = await fetch(\`/topics/\${topicId}/edits\`);
+            const edits = await res.json();
+            if (edits.length > 0) {
+              const historyList = document.getElementById('historyList');
+              historyList.innerHTML = edits.map(edit => \`
+                <div class="history-item">
+                  <div class="history-item-meta">
+                    \${edit.edited_by} • \${new Date(edit.edited_at).toLocaleString()}
+                  </div>
+                  <div class="history-change">
+                    \${edit.old_title ? \`Title: <span class="old">\${edit.old_title}</span> → <span class="new">\${edit.new_title}</span><br>\` : ''}
+                    \${edit.old_description ? \`Description: <span class="old">\${edit.old_description}</span> → <span class="new">\${edit.new_description || '(empty)'}</span>\` : ''}
+                  </div>
+                </div>
+              \`).join('');
+              document.getElementById('historySection').style.display = 'block';
+            }
+          } catch (err) {
+            console.error('Failed to load history:', err);
+          }
+        }
+
+        function closeEditModal() {
+          document.getElementById('editModal').classList.remove('active');
+        }
+
+        async function saveTopicEdit() {
+          const title = document.getElementById('editTitle').value.trim();
+          const description = document.getElementById('editDesc').value.trim();
+
+          if (!title) {
+            alert('Title is required');
+            return;
+          }
+
+          try {
+            const res = await fetch(\`/topics/\${topicId}\`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title, description })
+            });
+
+            if (res.ok) {
+              closeEditModal();
+              location.reload();
+            } else {
+              const err = await res.json();
+              alert('Error: ' + (err.error || 'Failed to save'));
+            }
+          } catch (err) {
+            console.error('Save error:', err);
+            alert('Error saving changes');
           }
         }
 
@@ -1293,5 +1612,115 @@ app.get('/ws', async (c) => {
   }
 });
 
+// IoT token validation helper
+async function validateIoTToken(c: any): Promise<string | null> {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.substring(7);
+  const kv = c.env.IOT_KV;
+  const deviceId = await kv.get(`iot:tokens:${token}`);
+
+  return deviceId;
+}
+
+// Admin: Setup IoT tokens (dev/testing)
+app.post('/admin/iot/setup-tokens', async (c) => {
+  const isAdmin = c.get('isAdmin');
+  const isDev = c.env.ENVIRONMENT === 'development' || c.req.header('X-Dev-Override') === 'true';
+
+  if (!isAdmin && !isDev) {
+    return c.json({ error: 'Only admins can setup tokens' }, 403);
+  }
+
+  const kv = c.env.IOT_KV;
+  const tokens = [
+    { token: 'iot-token-sensor-1', deviceId: 'sensor-lobby-1' },
+    { token: 'iot-token-charger-1', deviceId: 'charger-parking-1' },
+    { token: 'iot-token-lock-1', deviceId: 'lock-door-1' },
+    { token: 'iot-token-counter-1', deviceId: 'counter-inventory-1' }
+  ];
+
+  try {
+    for (const entry of tokens) {
+      await kv.put(`iot:tokens:${entry.token}`, entry.deviceId);
+    }
+    return c.json({ ok: true, tokens_created: tokens.length });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// IoT endpoints
+app.post('/ingest', async (c) => {
+  try {
+    // Validate bearer token
+    const deviceId = await validateIoTToken(c);
+    if (!deviceId) {
+      return c.json({ error: 'Unauthorized: invalid or missing bearer token' }, 401);
+    }
+
+    const iotHub = c.env.IOT_HUB;
+    const iotDo = iotHub.get(iotHub.idFromName('iot-hub'));
+    const body = await c.req.json();
+    const msgId = crypto.randomUUID();
+
+    // Verify device_id matches token
+    if (body.device_id && body.device_id !== deviceId) {
+      return c.json({ error: 'Unauthorized: device_id mismatch' }, 401);
+    }
+
+    // Use token's device_id if not provided in payload
+    const finalDeviceId = body.device_id || deviceId;
+
+    // Store in D1
+    const db = c.env.DB;
+    await db
+      .prepare('INSERT INTO iot_messages (id, device_id, payload, timestamp) VALUES (?, ?, ?, ?)')
+      .bind(msgId, finalDeviceId, JSON.stringify(body), new Date().toISOString())
+      .run();
+
+    // Broadcast via DO
+    const req = new Request('http://internal/ingest', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: msgId,
+        device_id: finalDeviceId,
+        payload: body,
+        timestamp: new Date().toISOString()
+      }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    await iotDo.fetch(req);
+
+    return c.json({ ok: true, device_id: finalDeviceId, msg_id: msgId }, 200);
+  } catch (err: any) {
+    console.error('Ingest error:', err);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+app.get('/subscribe', async (c) => {
+  try {
+    // Validate bearer token
+    const deviceId = await validateIoTToken(c);
+    if (!deviceId) {
+      return c.json({ error: 'Unauthorized: invalid or missing bearer token' }, 401);
+    }
+
+    const iotHub = c.env.IOT_HUB;
+    const iotDo = iotHub.get(iotHub.idFromName('iot-hub'));
+    const req = c.req.raw;
+    const response = await iotDo.fetch(req);
+    return response;
+  } catch (err: any) {
+    console.error('Subscribe error:', err.message);
+    return c.text('Error: ' + err.message, 500);
+  }
+});
+
 export default app;
-export { GlobalChat };
+export { GlobalChat, IotHub };
