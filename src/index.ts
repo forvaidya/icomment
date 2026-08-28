@@ -34,8 +34,16 @@ function decodeJWT(token: string): Record<string, unknown> | null {
 }
 
 
-// Middleware: Extract JWT and determine user role
+// Middleware: Extract JWT and determine user role (skip for /validate)
 app.use('*', async (c, next) => {
+  const url = new URL(c.req.url);
+
+  // Skip CF Access check for public endpoints
+  if (url.pathname === '/validate') {
+    await next();
+    return;
+  }
+
   const token = c.req.header('Cf-Access-Jwt-Assertion');
   const claims = token ? decodeJWT(token) : null;
   const userEmail = claims?.email as string | undefined;
@@ -145,7 +153,7 @@ app.get('/', async (c) => {
               })()}
             </p>
             <p style="color: #666; font-size: 12px; margin-top: 8px;">
-              <strong>Validate token:</strong><br/>
+              <strong>🔍 Validate token (with CF Access):</strong><br/>
               <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all; display: block;">curl -H "Authorization: Bearer ${(() => {
                 const now = Math.floor(Date.now() / 1000);
                 const payload = {
@@ -157,8 +165,9 @@ app.get('/', async (c) => {
                 const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
                 const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
                 return headerB64 + '.' + payloadB64 + '.{server-signature}';
-              })()}" ${c.req.url.split('/').slice(0,3).join('/')}/validate</code><br/><br/>
-              <strong>Use in API requests:</strong><br/>
+              })()}" -H "Cf-Access-Jwt-Assertion: ${c.req.header('Cf-Access-Jwt-Assertion') || '{cf-access-jwt}'}" ${c.req.url.split('/').slice(0,3).join('/')}/validate</code><br/>
+              <small style="color: #999;">Or configure /validate to bypass CF Access in Cloudflare Dashboard</small><br/><br/>
+              <strong>✅ Use in API requests:</strong><br/>
               <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all; display: block;">curl -H "Authorization: Bearer ${(() => {
                 const now = Math.floor(Date.now() / 1000);
                 const payload = {
@@ -171,7 +180,7 @@ app.get('/', async (c) => {
                 const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
                 return headerB64 + '.' + payloadB64 + '.{server-signature}';
               })()}" ${c.req.url.split('/').slice(0,3).join('/')}/api/iot/token</code><br/><br/>
-              <strong>Valid for:</strong> 7 days
+              <strong>⏱️ Valid for:</strong> 7 days
             </p>
           ` : ''}
         </div>
