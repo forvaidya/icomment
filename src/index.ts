@@ -84,8 +84,8 @@ app.use('*', async (c, next) => {
     return c.json({ error: 'mTLS certificate or Bearer token required' }, 401);
   }
 
-  // All other routes (/ant/*, /ant/admin/*, /validate, etc.) use CF Access email auth
-  if (pathname === '/validate' || pathname.startsWith('/ant/admin/')) {
+  // All other routes (/ant/*, /ant/admin/*, /ant/validate, etc.) use CF Access email auth
+  if (pathname === '/ant/ant/validate' || pathname.startsWith('/ant/admin/')) {
     // Skip CF Access check for these paths (handled per-route)
     const token = c.req.header('Cf-Access-Jwt-Assertion');
     const claims = token ? decodeJWT(token) : null;
@@ -189,7 +189,7 @@ app.get('/ant/about', async (c) => {
             <li>POST /api/iot/token - Get device token</li>
             <li>GET /api/iot/tokens - List user tokens</li>
             <li><strong>✅ Public Endpoints:</strong></li>
-            <li>GET /validate - Validate JWT bearer token</li>
+            <li>GET /ant/validate - Validate JWT bearer token</li>
             <li>POST /api/token/generate - Generate test JWT token</li>
           </ul>
         </div>
@@ -227,8 +227,8 @@ app.get('/ant/about', async (c) => {
                 const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
                 const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
                 return headerB64 + '.' + payloadB64 + '.{server-signature}';
-              })()}" -H "Cf-Access-Jwt-Assertion: ${c.req.header('Cf-Access-Jwt-Assertion') || '{cf-access-jwt}'}" ${c.req.url.split('/').slice(0,3).join('/')}/validate</code><br/>
-              <small style="color: #999;">Or configure /validate to bypass CF Access in Cloudflare Dashboard</small><br/><br/>
+              })()}" -H "Cf-Access-Jwt-Assertion: ${c.req.header('Cf-Access-Jwt-Assertion') || '{cf-access-jwt}'}" ${c.req.url.split('/').slice(0,3).join('/')}/ant/validate</code><br/>
+              <small style="color: #999;">Or configure /ant/validate to bypass CF Access in Cloudflare Dashboard</small><br/><br/>
               <strong>✅ Use in API requests:</strong><br/>
               <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all; display: block;">curl -H "Authorization: Bearer ${(() => {
                 const now = Math.floor(Date.now() / 1000);
@@ -270,7 +270,7 @@ app.get('/ant/about', async (c) => {
 });
 
 // Boards routes
-app.post('/boards', async (c) => {
+app.post('/ant/boards', async (c) => {
   const db = c.env.DB;
   const body = await c.req.json();
   const { name, description, created_by } = body;
@@ -295,7 +295,7 @@ app.get('/boards', async (c) => {
 });
 
 // Messages routes
-app.post('/general_messages', async (c) => {
+app.post('/ant/general_messages', async (c) => {
   const db = c.env.DB;
   const body = await c.req.json();
   const { board_id, user_id, content } = body;
@@ -332,7 +332,7 @@ app.get('/general_messages', async (c) => {
 });
 
 // User profile routes
-app.post('/users', async (c) => {
+app.post('/ant/users', async (c) => {
   const db = c.env.DB;
   const body = await c.req.json();
   const { email, username, bio } = body;
@@ -1518,7 +1518,7 @@ app.get('/ant/topics/:id/chat', async (c) => {
         // Connect WebSocket (no dependencies, connect immediately)
         function connectWebSocket() {
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const wsUrl = \`\${protocol}//\${window.location.host}/ws\`;
+          const wsUrl = \`\${protocol}//\${window.location.host}/ant/ws\`;
           ws = new WebSocket(wsUrl);
           ws.onopen = () => updateStatus('Connected', 'ok');
           ws.onerror = (err) => {
@@ -1716,7 +1716,7 @@ app.get('/ant/topics/:id/chat', async (c) => {
 });
 
 // WebSocket endpoint
-app.get('/ws', async (c) => {
+app.get('/ant/ws', async (c) => {
   console.log('GET /ws called');
   try {
     const chat = c.env.CHAT;
@@ -1818,7 +1818,7 @@ app.get('/api/iot/tokens', async (c) => {
 });
 
 // Validate JWT token
-app.get('/validate', async (c) => {
+app.get('/ant/ant/validate', async (c) => {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return c.json({ error: 'Missing or invalid Authorization header' }, 401);
