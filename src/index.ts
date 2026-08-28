@@ -124,6 +124,48 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// Spider app (unauthenticated placeholder)
+app.get('/spider/*', async (c) => {
+  const path = c.req.path;
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Spider - Unauthenticated</title>
+      <style>
+        body { font-family: sans-serif; padding: 40px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .status { background: #fff3cd; padding: 15px; border-radius: 4px; margin: 20px 0; }
+        .info { background: #d1ecf1; padding: 15px; border-radius: 4px; margin: 20px 0; }
+        .path { font-family: monospace; background: #f0f0f0; padding: 10px; border-radius: 4px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🕷️ Spider App</h1>
+        <div class="status">
+          <strong>⚠️ Unauthenticated Access</strong>
+          <p>This path does not require authentication.</p>
+        </div>
+        <div class="info">
+          <strong>Current Path:</strong>
+          <div class="path">${path}</div>
+          <p style="margin-top: 15px; font-size: 14px; color: #666;">
+            Spider is a placeholder app for testing path-based CF Access control.
+            Unlike /ant/*, this path has no authentication requirement.
+          </p>
+        </div>
+        <p style="margin-top: 20px;">
+          <a href="/ant/topics" style="color: #007bff; text-decoration: none; font-weight: bold;">← Go to Ant (requires auth) →</a>
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+  return c.html(html);
+});
+
 // About page (was homepage)
 app.get('/ant/about', async (c) => {
   const userEmail = c.get('userEmail');
