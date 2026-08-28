@@ -146,7 +146,7 @@ app.get('/', async (c) => {
             </p>
             <p style="color: #666; font-size: 12px; margin-top: 8px;">
               <strong>Use in requests:</strong> curl -H "Authorization: Bearer {token}" http://localhost:8787/api/iot/token<br/>
-              <strong>Valid for:</strong> 7 days | <strong>Secret:</strong> CF Secrets (shushma-shrikrishna)
+              <strong>Valid for:</strong> 7 days
             </p>
           ` : ''}
         </div>
