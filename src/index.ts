@@ -146,9 +146,31 @@ app.get('/', async (c) => {
             </p>
             <p style="color: #666; font-size: 12px; margin-top: 8px;">
               <strong>Validate token:</strong><br/>
-              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all;">curl -H "Authorization: Bearer {token}" ${c.req.url.split('/').slice(0,3).join('/')}/validate</code><br/><br/>
+              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all; display: block;">curl -H "Authorization: Bearer ${(() => {
+                const now = Math.floor(Date.now() / 1000);
+                const payload = {
+                  email: userEmail,
+                  sub: claims && (claims.sub as string) || 'unknown',
+                  iat: now,
+                  exp: now + 604800
+                };
+                const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+                const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+                return headerB64 + '.' + payloadB64 + '.{server-signature}';
+              })()}" ${c.req.url.split('/').slice(0,3).join('/')}/validate</code><br/><br/>
               <strong>Use in API requests:</strong><br/>
-              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all;">curl -H "Authorization: Bearer {token}" ${c.req.url.split('/').slice(0,3).join('/')}/api/iot/token</code><br/><br/>
+              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all; display: block;">curl -H "Authorization: Bearer ${(() => {
+                const now = Math.floor(Date.now() / 1000);
+                const payload = {
+                  email: userEmail,
+                  sub: claims && (claims.sub as string) || 'unknown',
+                  iat: now,
+                  exp: now + 604800
+                };
+                const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+                const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+                return headerB64 + '.' + payloadB64 + '.{server-signature}';
+              })()}" ${c.req.url.split('/').slice(0,3).join('/')}/api/iot/token</code><br/><br/>
               <strong>Valid for:</strong> 7 days
             </p>
           ` : ''}
