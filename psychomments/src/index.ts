@@ -6,7 +6,7 @@ type Env = {
   Variables: {
     userEmail?: string;
     isAdmin?: boolean;
-    claims?: Record<string, unknown>;
+    accessJwt?: string;
     deviceCert?: string;
     authMethod?: 'mtls' | 'bearer' | 'test';
   };
@@ -31,20 +31,6 @@ type CloudflareRequestContext = {
 
 function getCloudflareRequestContext(request: Request): CloudflareRequestContext | undefined {
   return (request as Request & { cf?: CloudflareRequestContext }).cf;
-}
-
-function decodeAccessJWT(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-
-    const base64Payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64Payload + '='.repeat((4 - (base64Payload.length % 4)) % 4);
-    const decoded = atob(padded);
-    return JSON.parse(decoded) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
 }
 
 const app = new Hono<Env>();
@@ -105,10 +91,9 @@ app.use('*', async (c, next) => {
   if (pathname === '/ant/ant/validate' || pathname.startsWith('/ant/admin/')) {
     // Skip CF Access check for these paths (handled per-route)
     const token = c.req.header('Cf-Access-Jwt-Assertion');
-    const claims = token ? decodeAccessJWT(token) : null;
-    const userEmail = claims?.email as string | undefined;
+    const userEmail = c.req.header('Cf-Access-Authenticated-User-Email');
 
-    c.set('claims', claims || undefined);
+    c.set('accessJwt', token);
     c.set('userEmail', userEmail);
 
     if (userEmail) {
@@ -124,14 +109,9 @@ app.use('*', async (c, next) => {
 
   // /ant/* routes require CF Access email auth
   const token = c.req.header('Cf-Access-Jwt-Assertion');
-  let userEmail: string | undefined;
-  let claims: Record<string, unknown> | undefined;
-  if (token) {
-    claims = decodeAccessJWT(token) ?? undefined;
-    userEmail = claims?.email as string | undefined;
-  }
+  const userEmail = c.req.header('Cf-Access-Authenticated-User-Email');
 
-  c.set('claims', claims || undefined);
+  c.set('accessJwt', token);
   c.set('userEmail', userEmail);
 
   if (userEmail) {
@@ -207,12 +187,14 @@ app.get('/spider/*', async (c) => {
 app.get('/ant/about', async (c) => {
   const userEmail = c.get('userEmail');
   const isAdmin = c.get('isAdmin');
-  const claims = c.get('claims');
+  const accessJwt = c.get('accessJwt');
 
   let roleDisplay = 'Unauthenticated';
   if (userEmail) {
     roleDisplay = isAdmin ? `Admin: ${userEmail}` : `Patron: ${userEmail}`;
   }
+
+  const printedJwt = accessJwt || 'No Cf-Access-Jwt-Assertion header received';
 
   const html = `
     <!DOCTYPE html>
@@ -244,6 +226,11 @@ app.get('/ant/about', async (c) => {
 
         <div class="welcome">
           Welcome ${roleDisplay}
+        </div>
+
+        <div class="jwt-info">
+          <strong>Cf-Access-Jwt-Assertion header:</strong>
+          <pre style="white-space: pre-wrap; overflow-wrap: anywhere;">${printedJwt}</pre>
         </div>
 
         <div class="status">
