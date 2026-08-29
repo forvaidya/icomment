@@ -1,0 +1,78 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+.next/
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Private keys, certificates, secrets
+NO-COMMIT/
+private.key
+*.pem
+
+# Wrangler
+.wrangler/
+wrangler.json
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+.sublime-workspace
+.sublime-project
+
+# OS
+.DS_Store
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Package manager caches
+.npm
+.yarn/cache
+.pnpm-store/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.eslintcache
+
+# Misc
+*.pem
+.node_repl_history
+.node-gyp/
+
+# Lock files (use bun.lockb for Bun)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
