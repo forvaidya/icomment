@@ -1942,38 +1942,24 @@ app.post('/spider/ingest', async (c) => {
   }
 
   try {
-    // Validate bearer token (optional fallback)
-    const deviceId = await validateIoTToken(c);
-    if (!deviceId) {
-      return c.json({ error: 'Unauthorized: invalid or missing bearer token' }, 401);
-    }
-
-    const iotHub = c.env.IOT_HUB;
-    const iotDo = iotHub.get(iotHub.idFromName('iot-hub'));
+    // mTLS is valid; extract device ID from certificate
+    const deviceId = cf.tlsClientAuth.certSubjectDN || 'unknown';
     const body = await c.req.json();
     const msgId = crypto.randomUUID();
 
-    // Verify device_id matches token
-    if (body.device_id && body.device_id !== deviceId) {
-      return c.json({ error: 'Unauthorized: device_id mismatch' }, 401);
-    }
-
-    // Use token's device_id if not provided in payload
-    const finalDeviceId = body.device_id || deviceId;
-
-    // Store in D1
     const db = c.env.DB;
     await db
       .prepare('INSERT INTO iot_messages (id, device_id, payload, timestamp) VALUES (?, ?, ?, ?)')
-      .bind(msgId, finalDeviceId, JSON.stringify(body), new Date().toISOString())
+      .bind(msgId, deviceId, JSON.stringify(body), new Date().toISOString())
       .run();
 
-    // Broadcast via DO
+    const iotHub = c.env.IOT_HUB;
+    const iotDo = iotHub.get(iotHub.idFromName('iot-hub'));
     const req = new Request('http://internal/ingest', {
       method: 'POST',
       body: JSON.stringify({
         id: msgId,
-        device_id: finalDeviceId,
+        device_id: deviceId,
         payload: body,
         timestamp: new Date().toISOString()
       }),
@@ -1981,8 +1967,7 @@ app.post('/spider/ingest', async (c) => {
     });
 
     await iotDo.fetch(req);
-
-    return c.json({ ok: true, device_id: finalDeviceId, msg_id: msgId }, 200);
+    return c.json({ ok: true, device_id: deviceId, msg_id: msgId }, 200);
   } catch (err: any) {
     console.error('Ingest error:', err);
     return c.json({ error: err.message }, 500);
@@ -1999,11 +1984,7 @@ app.get('/spider/subscribe', async (c) => {
   }
 
   try {
-    // Validate bearer token (optional fallback)
-    const deviceId = await validateIoTToken(c);
-    if (!deviceId) {
-      return c.json({ error: 'Unauthorized: invalid or missing bearer token' }, 401);
-    }
+    // mTLS is valid; use certificate as device identity
 
     const iotHub = c.env.IOT_HUB;
     const iotDo = iotHub.get(iotHub.idFromName('iot-hub'));
