@@ -240,14 +240,13 @@ app.get('/ant/about', async (c) => {
             <li>POST /ant/topics/:id/comments - Post comment</li>
             <li>GET /ant/topics/:id/comments - List comments</li>
             <li>GET /ant/profile/edit - Edit user profile</li>
-            <li>GET /ws - WebSocket real-time chat updates</li>
-            <li><strong>🔐 /api/* (mTLS - Certificate Auth):</strong></li>
-            <li>POST /api/ingest - Device publish (bearer token)</li>
-            <li>GET /api/subscribe - Real-time stream (WebSocket)</li>
+            <li>GET /ant/ws - WebSocket real-time chat updates</li>
+            <li><strong>🔐 /spider/* (mTLS - Certificate Auth):</strong></li>
+            <li>POST /spider/ingest - Device publish (mTLS)</li>
+            <li>GET /spider/subscribe - Real-time stream (WebSocket, mTLS)</li>
+            <li><strong>🔐 /api/* (Bearer Token Auth):</strong></li>
             <li>POST /api/iot/token - Get device token</li>
             <li>GET /api/iot/tokens - List user tokens</li>
-            <li><strong>✅ Public Endpoints:</strong></li>
-            <li>GET /ant/validate - Validate JWT bearer token</li>
             <li>POST /api/token/generate - Generate test JWT token</li>
           </ul>
         </div>
@@ -1875,54 +1874,6 @@ app.get('/api/iot/tokens', async (c) => {
   });
 });
 
-// Validate JWT token
-app.get('/ant/ant/validate', async (c) => {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return c.json({ error: 'Missing or invalid Authorization header' }, 401);
-  }
-
-  const token = authHeader.substring(7);
-  const secret = c.env.JWT_SECRET;
-
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      return c.json({ error: 'Invalid token format' }, 401);
-    }
-
-    const [headerB64, payloadB64, signatureB64] = parts;
-    const payload = JSON.parse(atob(payloadB64));
-
-    // Check expiration
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < now) {
-      return c.json({ error: 'Token expired', exp: payload.exp, now }, 401);
-    }
-
-    // Verify signature using SubtleCrypto
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secret);
-    const key = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
-    const messageBuffer = encoder.encode(`${headerB64}.${payloadB64}`);
-    const signatureBuffer = Uint8Array.from(atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-
-    const isValid = await crypto.subtle.verify('HMAC', key, signatureBuffer, messageBuffer);
-
-    if (!isValid) {
-      return c.json({ error: 'Invalid signature' }, 401);
-    }
-
-    return c.json({
-      ok: true,
-      valid: true,
-      claims: payload,
-      message: 'Token is valid and can be used for API requests'
-    });
-  } catch (err: any) {
-    return c.json({ error: 'Token validation failed: ' + err.message }, 401);
-  }
-});
 
 // Generate JWT access token (for frontend testing)
 app.post('/api/token/generate', async (c) => {
@@ -1980,10 +1931,18 @@ app.post('/api/token/generate', async (c) => {
   }
 });
 
-// IoT endpoints
-app.post('/ingest', async (c) => {
+// IoT endpoints (mTLS protected under /spider)
+app.post('/spider/ingest', async (c) => {
+  const cf = c.req.raw.cf as any;
+  if (!cf?.tlsClientAuth?.certVerified || cf.tlsClientAuth.certVerified !== 'SUCCESS') {
+    return c.json({
+      error: 'mTLS certificate required',
+      details: `certVerified: ${cf?.tlsClientAuth?.certVerified || 'not provided'}`
+    }, 401);
+  }
+
   try {
-    // Validate bearer token
+    // Validate bearer token (optional fallback)
     const deviceId = await validateIoTToken(c);
     if (!deviceId) {
       return c.json({ error: 'Unauthorized: invalid or missing bearer token' }, 401);
@@ -2030,9 +1989,17 @@ app.post('/ingest', async (c) => {
   }
 });
 
-app.get('/subscribe', async (c) => {
+app.get('/spider/subscribe', async (c) => {
+  const cf = c.req.raw.cf as any;
+  if (!cf?.tlsClientAuth?.certVerified || cf.tlsClientAuth.certVerified !== 'SUCCESS') {
+    return c.json({
+      error: 'mTLS certificate required',
+      details: `certVerified: ${cf?.tlsClientAuth?.certVerified || 'not provided'}`
+    }, 401);
+  }
+
   try {
-    // Validate bearer token
+    // Validate bearer token (optional fallback)
     const deviceId = await validateIoTToken(c);
     if (!deviceId) {
       return c.json({ error: 'Unauthorized: invalid or missing bearer token' }, 401);
