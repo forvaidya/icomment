@@ -251,57 +251,13 @@ app.get('/ant/about', async (c) => {
           </ul>
         </div>
 
-        <div class="jwt-info">
-          <strong class="info">JWT Info:</strong>
-          <p>${claims ? JSON.stringify(claims, null, 2) : 'No JWT token in request'}</p>
-          ${userEmail ? `
-            <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
-            <strong style="color: #28a745;">🔐 Bearer Token (for API testing):</strong>
-            <p style="word-break: break-all; background: #f0f0f0; padding: 10px; border-radius: 4px; margin: 8px 0; font-size: 11px; line-height: 1.4; font-family: monospace; color: #333;">
-              ${(() => {
-                const now = Math.floor(Date.now() / 1000);
-                const payload = {
-                  email: userEmail,
-                  sub: claims && (claims.sub as string) || 'unknown',
-                  iat: now,
-                  exp: now + 604800
-                };
-                const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-                const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-                return headerB64 + '.' + payloadB64 + '.{server-signature}';
-              })()}
-            </p>
-            <p style="color: #666; font-size: 12px; margin-top: 8px;">
-              <strong>🔍 Validate token (with CF Access):</strong><br/>
-              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all; display: block;">curl -H "Authorization: Bearer ${(() => {
-                const now = Math.floor(Date.now() / 1000);
-                const payload = {
-                  email: userEmail,
-                  sub: claims && (claims.sub as string) || 'unknown',
-                  iat: now,
-                  exp: now + 604800
-                };
-                const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-                const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-                return headerB64 + '.' + payloadB64 + '.{server-signature}';
-              })()}" -H "Cf-Access-Jwt-Assertion: ${c.req.header('Cf-Access-Jwt-Assertion') || '{cf-access-jwt}'}" ${c.req.url.split('/').slice(0,3).join('/')}/ant/validate</code><br/>
-              <small style="color: #999;">Or configure /ant/validate to bypass CF Access in Cloudflare Dashboard</small><br/><br/>
-              <strong>✅ Use in API requests:</strong><br/>
-              <code style="background: #fff; padding: 4px 6px; border-radius: 3px; word-break: break-all; display: block;">curl -H "Authorization: Bearer ${(() => {
-                const now = Math.floor(Date.now() / 1000);
-                const payload = {
-                  email: userEmail,
-                  sub: claims && (claims.sub as string) || 'unknown',
-                  iat: now,
-                  exp: now + 604800
-                };
-                const headerB64 = btoa(JSON.stringify({alg:'HS256',typ:'JWT'})).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-                const payloadB64 = btoa(JSON.stringify(payload)).replace(/[=]/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-                return headerB64 + '.' + payloadB64 + '.{server-signature}';
-              })()}" ${c.req.url.split('/').slice(0,3).join('/')}/api/iot/token</code><br/><br/>
-              <strong>⏱️ Valid for:</strong> 7 days
-            </p>
-          ` : ''}
+        <div style="margin-top: 20px; padding: 15px; background: #e7f3ff; border-radius: 4px; border-left: 4px solid #007bff;">
+          <strong>🔐 Authentication:</strong>
+          <ul style="margin-top: 10px; margin-left: 20px; font-size: 14px;">
+            <li><strong>/ant/*</strong> — CF Access (Email/OIDC) ✅</li>
+            <li><strong>/spider/*</strong> — mTLS (Certificate-based) 🔒</li>
+            <li><strong>/api/*</strong> — Bearer tokens (Legacy) 📝</li>
+          </ul>
         </div>
 
         <div style="margin-top: 20px; color: #666;">
