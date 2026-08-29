@@ -7,6 +7,8 @@ type Env = {
     userEmail?: string;
     isAdmin?: boolean;
     claims?: Record<string, unknown>;
+    deviceCert?: string;
+    authMethod?: 'mtls' | 'bearer' | 'test';
   };
   Bindings: {
     DB: any;
@@ -18,6 +20,32 @@ type Env = {
     ENVIRONMENT?: string;
   };
 };
+
+type CloudflareRequestContext = {
+  tlsClientAuth?: {
+    certVerified?: string;
+    certSubjectDN?: string;
+    certIssuerDN?: string;
+  };
+};
+
+function getCloudflareRequestContext(request: Request): CloudflareRequestContext | undefined {
+  return (request as Request & { cf?: CloudflareRequestContext }).cf;
+}
+
+function decodeAccessJWT(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+
+    const base64Payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64Payload + '='.repeat((4 - (base64Payload.length % 4)) % 4);
+    const decoded = atob(padded);
+    return JSON.parse(decoded) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 const app = new Hono<Env>();
 
@@ -77,7 +105,7 @@ app.use('*', async (c, next) => {
   if (pathname === '/ant/ant/validate' || pathname.startsWith('/ant/admin/')) {
     // Skip CF Access check for these paths (handled per-route)
     const token = c.req.header('Cf-Access-Jwt-Assertion');
-    const claims = token ? decodeJWT(token) : null;
+    const claims = token ? decodeAccessJWT(token) : null;
     const userEmail = claims?.email as string | undefined;
 
     c.set('claims', claims || undefined);
@@ -97,14 +125,10 @@ app.use('*', async (c, next) => {
   // /ant/* routes require CF Access email auth
   const token = c.req.header('Cf-Access-Jwt-Assertion');
   let userEmail: string | undefined;
+  let claims: Record<string, unknown> | undefined;
   if (token) {
-    try {
-      const parts = token.split('.');
-      const claims = JSON.parse(atob(parts[1]));
-      userEmail = claims?.email as string | undefined;
-    } catch {
-      userEmail = undefined;
-    }
+    claims = decodeAccessJWT(token) ?? undefined;
+    userEmail = claims?.email as string | undefined;
   }
 
   c.set('claims', claims || undefined);
@@ -123,7 +147,7 @@ app.use('*', async (c, next) => {
 
 // Spider app (mTLS protected)
 app.get('/spider/*', async (c) => {
-  const cf = c.req.raw.cf as any;
+  const cf = getCloudflareRequestContext(c.req.raw);
 
   // Check mTLS certificate (Phase 8 from procedure)
   if (!cf?.tlsClientAuth?.certVerified || cf.tlsClientAuth.certVerified !== 'SUCCESS') {
@@ -1830,7 +1854,7 @@ app.get('/api/iot/tokens', async (c) => {
 
 // IoT endpoints (mTLS protected under /spider)
 app.post('/spider/ingest', async (c) => {
-  const cf = c.req.raw.cf as any;
+  const cf = getCloudflareRequestContext(c.req.raw);
   if (!cf?.tlsClientAuth?.certVerified || cf.tlsClientAuth.certVerified !== 'SUCCESS') {
     return c.json({
       error: 'mTLS certificate required',
@@ -1872,7 +1896,7 @@ app.post('/spider/ingest', async (c) => {
 });
 
 app.get('/spider/subscribe', async (c) => {
-  const cf = c.req.raw.cf as any;
+  const cf = getCloudflareRequestContext(c.req.raw);
   if (!cf?.tlsClientAuth?.certVerified || cf.tlsClientAuth.certVerified !== 'SUCCESS') {
     return c.json({
       error: 'mTLS certificate required',
