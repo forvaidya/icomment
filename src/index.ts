@@ -15,7 +15,6 @@ type Env = {
     R2_PROFILES: any;
     CHAT: any;
     IOT_HUB: any;
-    JWT_SECRET: string;
     ENVIRONMENT?: string;
   };
 };
@@ -31,16 +30,6 @@ app.get('/', async (c) => {
   return c.redirect('/ant/about');
 });
 
-function decodeJWT(token: string): Record<string, unknown> | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const decoded = JSON.parse(atob(parts[1]));
-    return decoded;
-  } catch {
-    return null;
-  }
-}
 
 
 // Middleware: Route-based auth (email for /ant/*, mTLS for /api/*)
@@ -107,8 +96,16 @@ app.use('*', async (c, next) => {
 
   // /ant/* routes require CF Access email auth
   const token = c.req.header('Cf-Access-Jwt-Assertion');
-  const claims = token ? decodeJWT(token) : null;
-  const userEmail = claims?.email as string | undefined;
+  let userEmail: string | undefined;
+  if (token) {
+    try {
+      const parts = token.split('.');
+      const claims = JSON.parse(atob(parts[1]));
+      userEmail = claims?.email as string | undefined;
+    } catch {
+      userEmail = undefined;
+    }
+  }
 
   c.set('claims', claims || undefined);
   c.set('userEmail', userEmail);
@@ -247,7 +244,6 @@ app.get('/ant/about', async (c) => {
             <li><strong>🔐 /api/* (Bearer Token Auth):</strong></li>
             <li>POST /api/iot/token - Get device token</li>
             <li>GET /api/iot/tokens - List user tokens</li>
-            <li>POST /api/token/generate - Generate test JWT token</li>
           </ul>
         </div>
 
@@ -1831,61 +1827,6 @@ app.get('/api/iot/tokens', async (c) => {
 });
 
 
-// Generate JWT access token (for frontend testing)
-app.post('/api/token/generate', async (c) => {
-  const userEmail = c.get('userEmail');
-  if (!userEmail) {
-    return c.json({ error: 'Not authenticated' }, 401);
-  }
-
-  const claims = c.get('claims') as Record<string, unknown>;
-  const secret = c.env.JWT_SECRET;
-  const now = Math.floor(Date.now() / 1000);
-
-  // Create payload
-  const payload = {
-    email: userEmail,
-    sub: claims?.sub || userEmail,
-    iat: now,
-    exp: now + 604800 // 7 days
-  };
-
-  // Manual JWT creation (header.payload.signature)
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const headerB64 = btoa(JSON.stringify(header))
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-  const payloadB64 = btoa(JSON.stringify(payload))
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
-  const message = `${headerB64}.${payloadB64}`;
-
-  // Create HMAC-SHA256 signature using SubtleCrypto
-  try {
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secret);
-    const key = await crypto.subtle.importKey('raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
-    const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-      .replace(/=/g, '')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_');
-
-    const token = `${message}.${signatureB64}`;
-
-    return c.json({
-      ok: true,
-      token,
-      user_email: userEmail,
-      expires_in: 604800,
-      usage: `curl -H "Authorization: Bearer ${token}" http://localhost:8787/api/iot/token`
-    });
-  } catch (err: any) {
-    return c.json({ error: 'Token generation failed: ' + err.message }, 500);
-  }
-});
 
 // IoT endpoints (mTLS protected under /spider)
 app.post('/spider/ingest', async (c) => {
