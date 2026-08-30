@@ -56,6 +56,8 @@ Deployment is still possible without a route. Deployment publishes the Worker ve
 
 A [Service Binding](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/) is the connection between the Pages-side BFF and the private Worker. It provides:
 
+(See [FETCHER_EXPLAINED.md](FETCHER_EXPLAINED.md) for how Fetcher—the TypeScript interface for Service Bindings—is implemented.)
+
 - an explicit caller relationship
 - Worker-to-Worker communication without public DNS
 - no CORS requirement between the internal services
