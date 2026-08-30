@@ -13,3 +13,9 @@ pages_build_output_dir = "."
 [[services]]
 binding = "ASPIRE_MATH"
 service = "aspire-math"
+
+# mTLS Certificate Binding for calling external AWS endpoint with client cert
+# @see https://developers.cloudflare.com/workers/runtime-apis/bindings/mtls-certificates/
+[[mtls_certificates]]
+binding = "LAPTOP_BACKEND_MTLS"
+certificate_id = "56964753-03ed-4f3e-89b3-89873425d0ed"

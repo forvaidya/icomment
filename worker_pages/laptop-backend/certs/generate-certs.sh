@@ -10,12 +10,13 @@ openssl genrsa -out "$OUT_DIR/ca-key.pem" 2048
 openssl req -new -x509 -days 3650 -key "$OUT_DIR/ca-key.pem" -out "$OUT_DIR/ca-cert.pem" \
   -subj "/CN=laptop-backend-ca"
 
-# Server cert (signed by CA)
+# Server cert (signed by CA) with SAN
 openssl genrsa -out "$OUT_DIR/server-key.pem" 2048
 openssl req -new -key "$OUT_DIR/server-key.pem" -out "$OUT_DIR/server.csr" \
-  -subj "/CN=port9000.awanipro.com"
+  -subj "/CN=knuth.awanipro.com"
 openssl x509 -req -days 365 -in "$OUT_DIR/server.csr" \
   -CA "$OUT_DIR/ca-cert.pem" -CAkey "$OUT_DIR/ca-key.pem" -CAcreateserial \
+  -extfile <(printf "subjectAltName=DNS:knuth.awanipro.com,IP:15.206.133.75") \
   -out "$OUT_DIR/server-cert.pem"
 rm "$OUT_DIR/server.csr"
 
