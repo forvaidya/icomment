@@ -1,7 +1,15 @@
+# Public Pages project with Service Binding to private Worker
+# See ARCHITECTURE.md for the public Pages + private Worker pattern
+# @see https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/
+
 name = "aspire-pages"
 compatibility_date = "2026-08-30"
 pages_build_output_dir = "."
 
+# Service Binding configuration
+# This creates a named Fetcher available in Pages Functions via env.ASPIRE_MATH
+# The binding connects this Pages project to the private aspire-math Worker
+# @see https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/
 [[services]]
 binding = "ASPIRE_MATH"
 service = "aspire-math"
