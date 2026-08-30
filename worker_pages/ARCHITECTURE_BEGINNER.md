@@ -1,5 +1,26 @@
 # Public Pages + Private Workers: A Beginner's Guide
 
+## ⚠️ Important: Language & Platform Notes
+
+**This guide uses Cloudflare-specific tech. Know the constraints:**
+
+| Layer | Language | Why | Alternative |
+|-------|----------|-----|-------------|
+| **Pages + Workers** | TypeScript/JavaScript only | Cloudflare platform requirement | Use different cloud provider |
+| **BFF (API interaction)** | TypeScript/JavaScript | Must run on Cloudflare Workers | N/A |
+| **Business logic** | Any language | Runs on your own servers | Python, Go, Rust, etc. |
+
+**Pattern is universal; implementation is platform-specific.**
+
+- 🟦 **Cloudflare**: Pages + Workers (TypeScript)
+- 🟨 **Python**: Flask/FastAPI + hidden backend
+- 🔴 **Go**: Gin/Echo + hidden backend
+- 🟪 **Rust**: Actix-web + hidden backend
+
+The **architecture concept** (public frontend + private backend + BFF) works anywhere. The **Cloudflare implementation** requires TypeScript.
+
+---
+
 ## The Problem (Real World Analogy)
 
 Imagine a restaurant:

@@ -1,5 +1,20 @@
 # Public Pages and Private Workers
 
+## Platform & Language Note
+
+**This is a Cloudflare-specific implementation.**
+
+- **Pages + Workers API layer:** TypeScript/JavaScript (Cloudflare platform requirement)
+- **Backend business logic:** Any language (runs on your own servers)
+- **Pattern itself:** Universal (works on any platform: AWS, Azure, Python, Go, Rust, etc.)
+
+If you're learning the pattern to apply elsewhere:
+- The architecture is platform-agnostic
+- The TypeScript requirement applies only to Cloudflare
+- Python, Go, Rust, etc. can implement the same pattern with different tools
+
+---
+
 ## Preamble
 
 Cloudflare is a serverless platform. Because Cloudflare Workers, Pages, and its other infrastructure provide less control over network topology than platforms such as AWS and GCP, many tutorials expose Workers through public routes.
