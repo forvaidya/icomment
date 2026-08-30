@@ -1,0 +1,7 @@
+name = "aspire-pages"
+compatibility_date = "2026-08-30"
+pages_build_output_dir = "."
+
+[[services]]
+binding = "ASPIRE_MATH"
+service = "aspire-math"

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aspire System</title>
+  <style>
+    body {
+      display: grid;
+      min-height: 100vh;
+      margin: 0;
+      place-items: center;
+      font-family: system-ui, sans-serif;
+      background: #f4f7fb;
+      color: #172033;
+    }
+
+    main {
+      width: min(90vw, 28rem);
+      padding: 2rem;
+      text-align: center;
+      background: #fff;
+      border: 1px solid #dce3ee;
+      border-radius: 8px;
+      box-shadow: 0 12px 30px rgb(23 32 51 / 10%);
+    }
+
+    h1 {
+      margin: 0 0 1.5rem;
+      font-size: 1.5rem;
+    }
+
+    .calculator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+    }
+
+    input {
+      width: 3ch;
+      padding: 0.55rem 0.4rem;
+      border: 1px solid #aebbd0;
+      border-radius: 4px;
+      font: inherit;
+      text-align: center;
+    }
+
+    button {
+      padding: 0.55rem 0.8rem;
+      border: 0;
+      border-radius: 4px;
+      background: #1769aa;
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    button[type="button"] {
+      background: #667085;
+    }
+
+    #message {
+      min-height: 1.5rem;
+      margin: 1.5rem 0 0;
+      font-weight: 600;
+    }
+
+    .error {
+      color: #b42318;
+    }
+
+    .result {
+      color: #087443;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Welcome to Aspire System</h1>
+    <form class="calculator" id="calculator-form">
+      <input id="first-number" name="a" type="text" inputmode="decimal" aria-label="First number">
+      <span>+</span>
+      <input id="second-number" name="b" type="text" inputmode="decimal" aria-label="Second number">
+      <button type="submit">Add</button>
+      <button type="button" id="clear-button">Clear</button>
+    </form>
+    <p id="message" role="status" aria-live="polite"></p>
+  </main>
+  <script>
+    const form = document.querySelector('#calculator-form');
+    const firstNumber = document.querySelector('#first-number');
+    const secondNumber = document.querySelector('#second-number');
+    const message = document.querySelector('#message');
+    const clearButton = document.querySelector('#clear-button');
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      message.className = '';
+      message.textContent = 'Calculating...';
+
+      const params = new URLSearchParams({ a: firstNumber.value, b: secondNumber.value });
+      const response = await fetch(`/api/add?${params}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        message.className = 'error';
+        message.textContent = data.error || 'Unable to add values';
+        return;
+      }
+
+      message.className = 'result';
+      message.textContent = `Result: ${data.result}`;
+    });
+
+    clearButton.addEventListener('click', () => {
+      form.reset();
+      message.className = '';
+      message.textContent = '';
+      firstNumber.focus();
+    });
+  </script>
+</body>
+</html>
