@@ -36,7 +36,7 @@ If you don't know TypeScript, you cannot:
 - [Cloudflare TypeScript Guide](https://developers.cloudflare.com/workers/tooling/typescript/)
 - Focus: interfaces, types, generics, type safety
 
-**Then come back to this guide** with that foundation.
+**Return to this guide** with that foundation.
 
 ---
 
@@ -293,4 +293,4 @@ Browser → /api/add (Pages Function) → [Service Binding] → aspire-math (pri
 
 ---
 
-**Made for learning.** Questions? Ask your dad or [read the Cloudflare docs](https://developers.cloudflare.com/workers/).
+**Questions?** [Read the Cloudflare docs](https://developers.cloudflare.com/workers/) or explore the [source code](https://github.com/cloudflare/workers-types).

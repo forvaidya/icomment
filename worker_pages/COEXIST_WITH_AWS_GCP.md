@@ -569,5 +569,5 @@ Reliability: If AWS fails, edge cache serves historical data
 - AWS for what it does best: complex compute, databases, integrations
 - Together: cheaper, faster, more reliable than either alone
 
-**Your daughter learning this:** She's learning enterprise architecture. This is what real systems look like. Not "pick one cloud," but "pick the right tool for each job."
+**This is enterprise architecture:** Real systems don't choose one platform. They choose the right tool for each job based on requirements, cost, and risk profile.
 
