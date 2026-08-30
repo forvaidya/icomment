@@ -2,7 +2,9 @@
 
 ## Preamble
 
-Cloudflare is serverless. At least on the free tier, it does not provide conventional VPC or network-topology controls, so many tutorials expose Workers through public routes.
+Cloudflare is a serverless platform. Because Cloudflare Workers, Pages, and its other infrastructure provide less control over network topology than platforms such as AWS and GCP, many tutorials expose Workers through public routes.
+
+Many tutorials overlook the practical requirement to protect the API while keeping the frontend publicly reachable.
 
 This paper presents an alternative: keep presentation on public Pages and backend capabilities in Workers with no public route, reachable only through Service Bindings.
 
