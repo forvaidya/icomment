@@ -435,6 +435,70 @@ AWS (Order Processing):
 - If Cloudflare fails: Users see cached reviews (acceptable)
 - If AWS fails: Payment processing stops (detected, manual fallback)
 
+### Pattern: Conversion Funnel (Browse vs Purchase)
+
+**Every business has this pattern:**
+```
+Browse (High Volume, Low Conversion) → Purchase (Low Volume, High Value)
+```
+
+**Insurance/Travel/Products Example:**
+
+**Top of Funnel - Browse (Cloudflare):**
+```
+1,000,000 visitors/month
+├─ Search flights/policies/products (cached)
+├─ Compare options (read-only)
+├─ Read reviews (social proof)
+├─ Check prices (hourly refresh)
+└─ View availability (real-time via Durable Objects)
+
+Characteristics: Read-heavy, cacheable, latency-critical, low risk
+Best Platform: Cloudflare
+  Cost: $20-50/month for 1M visits
+  Latency: <100ms globally
+  Risk: Low (stale data acceptable)
+```
+
+**Bottom of Funnel - Purchase (AWS/Primary Cloud):**
+```
+10,000 conversions/month (1% of browsers)
+├─ Personal details (PII, compliance)
+├─ Cart management (stateful)
+├─ Payment processing (PCI compliance)
+├─ Order confirmation (ACID transactions)
+└─ Booking creation (immutable record)
+
+Characteristics: Write-heavy, not cacheable, compliance-required, high risk
+Best Platform: AWS/Primary Cloud
+  Cost: $500/month (compute + compliance)
+  Latency: 200-500ms (users accept delays)
+  Risk: High (but worth it: generates $20,000/month revenue)
+```
+
+**The Economics:**
+```
+Cloudflare Browse:
+  1M requests × $0.00002 = $20/month
+  
+AWS Transactions:
+  10,000 purchases → $20,000 revenue
+  Processing cost: $500/month
+  
+Result: $520 total infrastructure cost for $20,000 revenue
+If all on AWS: $5000+/month (10x more expensive)
+Savings: 90% with hybrid
+```
+
+**Why This Works:**
+- 🟢 99% of traffic on cheap platform
+- 🟢 1% of traffic on reliable platform
+- 🟢 User experience unchanged (browse is fast, payment processing expected to be slower)
+- 🟢 Compliance requirements met only where needed
+
+**The Conversion Funnel Principle:**
+> "High-volume, low-risk operations on cheap, fast infrastructure. Low-volume, high-value operations on reliable, compliant infrastructure."
+
 ---
 
 ### Pattern 1: Cloudflare for Speed, AWS for Power
