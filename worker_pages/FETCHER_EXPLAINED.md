@@ -188,6 +188,18 @@ Fetcher is documented in these places:
 
 ---
 
+## Deep Dive: Read the Actual Source
+
+Stop reading explanations. **See the real thing:**
+
+[Fetcher interface on GitHub](https://github.com/cloudflare/workers-types/blob/c8d9533caa4415c2156d2cf1daca75289d01ae70/index.d.ts#L587)
+
+Line 587 shows exactly what Fetcher is. No magic, no mystery—just TypeScript code.
+
+This is how developers learn: **Go to the source. Read the code. Understand it directly.**
+
+---
+
 ## Questions for Understanding
 
 1. **Is Fetcher magic?**
