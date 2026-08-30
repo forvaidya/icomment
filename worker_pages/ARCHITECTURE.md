@@ -119,6 +119,27 @@ Setting [`workers_dev = false`](https://developers.cloudflare.com/workers/config
 
 See the [aspire-math Worker configuration](workers/aspire-math/wrangler.toml) with `workers_dev = false`.
 
+## Security: MTLS vs Service Binding
+
+**Service Binding (this architecture):**
+- Internal to Cloudflare (within same platform)
+- No MTLS needed—Cloudflare handles trust internally
+- Secure by architecture (no public endpoint)
+
+**External machine-to-machine (IoT, webhooks, external services):**
+- [Mutual TLS (mTLS)](https://developers.cloudflare.com/workers/runtime-apis/mtls-client-auth/) **is essential**
+- Device or external service must authenticate to Worker
+- Worker must authenticate to external service
+- Example: IoT device → Cloudflare Worker (mTLS required)
+
+**When MTLS matters:**
+- IoT devices ingesting data to Workers
+- External service webhooks
+- Database connections over untrusted networks
+- Service-to-service authentication (outside Cloudflare)
+
+See [Cloudflare mTLS documentation](https://developers.cloudflare.com/workers/runtime-apis/mtls-client-auth/).
+
 ## Tokens and JWTs
 
 Service Bindings remove the need to expose the private Worker through a public route. They do not make application authorization unnecessary.
