@@ -23,6 +23,10 @@ out/
 NO-COMMIT/
 private.key
 *.pem
+*.key
+*.crt
+*.csr
+worker_pages/laptop-backend/certs/out/
 
 # Wrangler
 .wrangler/
