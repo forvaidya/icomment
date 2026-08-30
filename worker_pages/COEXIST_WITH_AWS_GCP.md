@@ -531,6 +531,309 @@ Reliability: If AWS fails, edge cache serves historical data
 
 ---
 
+## Multi-Cloud Security: Non-Negotiable Guardrails
+
+**When Cloudflare calls AWS (or any cross-cloud communication), you cross a trust boundary.**
+
+Inside a single cloud (Cloudflare to Cloudflare Worker via Service Binding):
+- ✅ Internal communication
+- ✅ Cloudflare handles trust
+- ❌ MTLS not needed
+
+Across clouds (Cloudflare to AWS):
+- ❌ External API call over HTTPS
+- ❌ Must verify both parties
+- ❌ MTLS is MANDATORY
+- ❌ JWT alone is insufficient
+
+**Required Security Layers (All of Them):**
+
+### 1. MTLS (Mutual TLS) - REQUIRED
+```typescript
+// Cloudflare Worker calling AWS
+const response = await fetch('https://api.aws.example.com/process', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${JWT_TOKEN}`,
+  },
+  // Client certificate for mTLS
+  cert: CLIENT_CERT,
+  key: CLIENT_KEY,
+});
+```
+
+**Why:** Both parties prove identity. AWS proves it's really AWS, Cloudflare proves it's really Cloudflare.
+
+### 2. JWT (JSON Web Token) - REQUIRED
+```typescript
+// Signed token with expiration
+const token = jwt.sign(
+  { sub: 'cloudflare-bff', aud: 'aws-api', iat: now(), exp: now() + 3600 },
+  JWT_SECRET,
+  { algorithm: 'HS256' }
+);
+```
+
+**Why:** Stateless, verifiable, contains claims about caller. AWS validates signature and expiration.
+
+### 3. Service Tokens / Pre-Shared Secrets - REQUIRED
+```typescript
+// Additional secret shared only between Cloudflare and AWS
+const headers = {
+  'X-Service-Token': SHARED_SECRET, // Different from JWT
+  'Authorization': `Bearer ${JWT_TOKEN}`,
+};
+```
+
+**Why:** Defense in depth. If JWT is compromised, service token adds another layer.
+
+### 4. Rate Limiting - REQUIRED
+```typescript
+// AWS side: reject if rate limit exceeded
+if (requestsPerMinute > 1000) {
+  return { statusCode: 429, body: 'Too Many Requests' };
+}
+```
+
+**Why:** Prevent brute force, DoS attacks, account enumeration.
+
+### 5. Request Signing / Nonce - REQUIRED
+```typescript
+// Include timestamp + nonce to prevent replay attacks
+const headers = {
+  'X-Timestamp': Date.now(),
+  'X-Nonce': crypto.randomUUID(),
+  'X-Signature': sign(JSON.stringify(body) + timestamp + nonce, SECRET),
+};
+```
+
+**Why:** Prevent replay attacks (attacker replaying old valid requests).
+
+### 6. IP Whitelisting (If Possible) - RECOMMENDED
+```
+AWS Security Group:
+  Allow: Cloudflare IP ranges only
+  Deny: Everyone else
+```
+
+**Why:** Extra layer if Cloudflare IPs are static (they mostly are at scale).
+
+---
+
+## The Security Stack for Multi-Cloud
+
+```
+Request from Cloudflare to AWS:
+
+┌─────────────────────────────────┐
+│ 1. HTTPS/TLS (transport layer)  │
+│    - Encryption in transit      │
+└─────────────────────────────────┘
+         ↓
+┌─────────────────────────────────┐
+│ 2. MTLS (mutual authentication) │
+│    - Client cert validates      │
+│    - Server cert validates      │
+└─────────────────────────────────┘
+         ↓
+┌─────────────────────────────────┐
+│ 3. JWT (stateless authorization)│
+│    - Signed token with claims   │
+│    - Expiration prevents reuse  │
+└─────────────────────────────────┘
+         ↓
+┌─────────────────────────────────┐
+│ 4. Service Token (extra secret) │
+│    - Defense in depth           │
+│    - Shared secret between apps │
+└─────────────────────────────────┘
+         ↓
+┌─────────────────────────────────┐
+│ 5. Request Signing (replay prot)│
+│    - Nonce + timestamp          │
+│    - Signature verification     │
+└─────────────────────────────────┘
+         ↓
+┌─────────────────────────────────┐
+│ 6. Rate Limiting (DOS protection)
+│    - Per token, per IP, global  │
+└─────────────────────────────────┘
+```
+
+---
+
+## Why ALL Layers Are Necessary
+
+**If only HTTPS:**
+- ❌ HTTPS is compromised (private CA) = all calls are exposed
+
+**If only HTTPS + JWT:**
+- ❌ JWT leaked = anyone can forge requests
+- ❌ No mutual authentication = fake AWS can steal credentials
+
+**If only HTTPS + MTLS:**
+- ❌ No payload verification = man-in-the-middle can modify requests
+
+**All layers together:**
+- ✅ Attacker must compromise: HTTPS, cert, JWT secret, service token, AND replay protection
+- ✅ Each layer is independent (compromise of one doesn't break others)
+- ✅ Audit trail (who called what, when, with what signature)
+
+---
+
+## Implementation Example
+
+```typescript
+// Cloudflare Worker calling AWS securely
+
+import * as jwt from 'jsonwebtoken';
+import * as crypto from 'crypto';
+
+async function callAWS(payload: object, env: Env) {
+  // 1. Create JWT
+  const token = jwt.sign(
+    {
+      sub: 'cloudflare-bff',
+      aud: 'aws-api',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 300, // 5 min expiration
+    },
+    env.JWT_SECRET,
+    { algorithm: 'HS256' }
+  );
+
+  // 2. Create nonce + signature for replay protection
+  const timestamp = Date.now();
+  const nonce = crypto.randomUUID();
+  const payloadStr = JSON.stringify(payload);
+  const signature = crypto
+    .createHmac('sha256', env.REPLAY_SECRET)
+    .update(payloadStr + timestamp + nonce)
+    .digest('hex');
+
+  // 3. Make request with all security layers
+  const response = await fetch('https://api.aws.example.com/process', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-Service-Token': env.SERVICE_TOKEN,
+      'X-Timestamp': timestamp.toString(),
+      'X-Nonce': nonce,
+      'X-Signature': signature,
+      'Content-Type': 'application/json',
+    },
+    body: payloadStr,
+    // mTLS (requires proper cert configuration)
+  });
+
+  if (!response.ok) {
+    // Log security event
+    console.error('Security violation or AWS error', response.status);
+    // Return graceful error to user (don't expose details)
+    return { error: 'Processing failed' };
+  }
+
+  return response.json();
+}
+```
+
+```python
+# AWS Lambda endpoint receiving from Cloudflare
+
+import hmac
+import hashlib
+import json
+from datetime import datetime, timedelta
+import jwt
+
+def lambda_handler(event, context):
+    """Receive calls from Cloudflare with multi-layer security."""
+    
+    # 1. Extract headers
+    headers = event['headers']
+    auth_header = headers.get('Authorization', '')
+    service_token = headers.get('X-Service-Token', '')
+    timestamp = headers.get('X-Timestamp', '')
+    nonce = headers.get('X-Nonce', '')
+    signature = headers.get('X-Signature', '')
+    
+    # 2. Verify service token (defense in depth)
+    if service_token != os.environ['SERVICE_TOKEN']:
+        return {'statusCode': 401, 'body': 'Invalid service token'}
+    
+    # 3. Verify JWT
+    try:
+        token = auth_header.replace('Bearer ', '')
+        claims = jwt.decode(token, os.environ['JWT_SECRET'], algorithms=['HS256'])
+        if claims['aud'] != 'aws-api':
+            return {'statusCode': 401, 'body': 'Invalid audience'}
+    except jwt.InvalidTokenError:
+        return {'statusCode': 401, 'body': 'Invalid token'}
+    
+    # 4. Verify replay protection (nonce + timestamp)
+    request_time = int(timestamp) / 1000
+    if datetime.now() - timedelta(minutes=5) > datetime.fromtimestamp(request_time):
+        return {'statusCode': 401, 'body': 'Request expired'}
+    
+    body = event['body']
+    expected_signature = hmac.new(
+        os.environ['REPLAY_SECRET'].encode(),
+        (body + timestamp + nonce).encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    if not hmac.compare_digest(signature, expected_signature):
+        return {'statusCode': 401, 'body': 'Invalid signature (replay attack?)'}
+    
+    # 5. Rate limiting check
+    # (Use DynamoDB or cache to track requests per token)
+    # ...
+    
+    # 6. All checks passed - process request
+    payload = json.loads(body)
+    # Do business logic
+    return {'statusCode': 200, 'body': json.dumps({'result': 'success'})}
+```
+
+---
+
+## When Multi-Cloud Calls Fail (Graceful Degradation)
+
+```typescript
+async function callAWSWithFallback(payload, env) {
+  try {
+    return await callAWS(payload, env);
+  } catch (error) {
+    // AWS is down or unreachable
+    // Return cached data (KV) with staleness header
+    const cached = await env.CACHE_KV.get(`data:${payload.id}`);
+    if (cached) {
+      return {
+        ...JSON.parse(cached),
+        'X-Cache': 'stale-while-revalidate',
+        'X-Stale-Since': '5 minutes ago'
+      };
+    }
+    
+    // No cache available - return error
+    return {
+      error: 'Service temporarily unavailable',
+      retry_after: 60
+    };
+  }
+}
+```
+
+---
+
+## References
+
+- [Cloudflare mTLS Documentation](https://developers.cloudflare.com/workers/runtime-apis/mtls-client-auth/)
+- [JWT Best Practices](https://tools.ietf.org/html/rfc8725)
+- [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
+
+---
+
 ## Decision Framework
 
 **Ask these questions:**
