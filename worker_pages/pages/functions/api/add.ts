@@ -31,7 +31,7 @@ interface Env {
   ASPIRE_MATH: Fetcher;
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestGet: PagesFunction<Env> = async ({ request, env }: { request: Request; env: Env }) => {
   const url = new URL(request.url);
   const response = await env.ASPIRE_MATH.fetch(
     `https://aspire-math/add?${url.searchParams.toString()}`
