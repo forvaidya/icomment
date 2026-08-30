@@ -54,7 +54,7 @@ Deployment is still possible without a route. Deployment publishes the Worker ve
 
 ## Why Service Binding
 
-A Service Binding is the connection between the Pages-side BFF and the private Worker. It provides:
+A [Service Binding](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/) is the connection between the Pages-side BFF and the private Worker. It provides:
 
 - an explicit caller relationship
 - Worker-to-Worker communication without public DNS
@@ -65,6 +65,25 @@ A Service Binding is the connection between the Pages-side BFF and the private W
 The binding name is part of the caller's configuration. In this system the intended name is `ASPIRE_MATH` and it points to the Worker service `aspire-math`.
 
 See the [Pages Service Binding configuration](pages/wrangler.toml).
+
+## Why `workers_dev = false`
+
+By default, Cloudflare deploys Workers with a public `workers.dev` hostname. This creates an unintended public route to your business logic.
+
+Setting [`workers_dev = false`](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/) **disables the public hostname entirely**. The Worker:
+- has no `workers.dev` URL
+- has no public route
+- cannot be reached from the Internet
+- is reachable only through explicit Service Bindings
+
+**This is the core motivation** for separating Pages (public) and Workers (private). Without `workers_dev = false`, you're forced to either expose business logic publicly or route everything through a BFF anyway. With it, you get:
+
+1. True network isolation (no public endpoint exists)
+2. Explicit trust boundaries (only configured callers can invoke)
+3. Simplified security model (no need to protect a public route)
+4. Dependency clarity (which services call which)
+
+See the [aspire-math Worker configuration](workers/aspire-math/wrangler.toml) with `workers_dev = false`.
 
 ## Tokens and JWTs
 
