@@ -370,6 +370,73 @@ Language doesn't matter at the boundary
 
 ## Real-World Coexistence Patterns
 
+### Pattern 0: E-Commerce (Low-Stake vs Critical)
+
+**Cloudflare (Comments, Reviews, Promotions, Offers):**
+```
+- Product reviews: cached, reads only, no consistency issues
+- Comments: fanout via Durable Objects (real-time)
+- Promotions: highly cacheable, global distribution
+- Offers: read-heavy, broadcast to many users
+
+Risk if stale: Low (user sees yesterday's review = acceptable)
+Latency requirement: High (every user sees instantly)
+Volume: High (millions of reads/day)
+
+Deployment: wrangler deploy (30 seconds)
+Cost: $20/month (handles all traffic)
+```
+
+**AWS/Primary Cloud (Payments, Inventory, Shipping):**
+```
+- Payments: PCI compliance, regulatory requirements, strong consistency
+- Inventory: critical correctness (can't oversell), transactional
+- Shipping: order state must be correct, no race conditions
+- Refunds: financial accuracy non-negotiable
+
+Risk if stale: CRITICAL (wrong inventory = customer loss)
+Latency requirement: Moderate (internal process, async OK)
+Volume: Moderate (thousands of txns/day)
+
+Deployment: Full pipeline (5-10 minutes)
+Cost: $100+/month (RDS + Lambda + API)
+```
+
+**Architecture:**
+```
+Browser → Cloudflare (Comments/Reviews/Offers)
+          ↓
+          ← Cached (50ms response)
+
+Browser → AWS (Checkout)
+          ↓
+          RDS (ACID transactions)
+          ← Strong consistency (200ms response)
+```
+
+**Business Logic Separation:**
+```
+Cloudflare (User Experience):
+  ✓ GET /reviews (cached, stale OK)
+  ✓ POST /review (fanout to Durable Objects)
+  ✓ GET /promotions (KV cache, refreshed hourly)
+  ✓ GET /offers (real-time broadcast)
+
+AWS (Order Processing):
+  ✓ POST /checkout (validate inventory)
+  ✓ POST /payment (PCI compliance)
+  ✓ POST /shipment (update state machine)
+  ✓ GET /order-status (transactional read)
+```
+
+**Cost & Risk:**
+- Cloudflare handles 95% of traffic (cheap)
+- AWS only on critical path (expensive, but small volume)
+- If Cloudflare fails: Users see cached reviews (acceptable)
+- If AWS fails: Payment processing stops (detected, manual fallback)
+
+---
+
 ### Pattern 1: Cloudflare for Speed, AWS for Power
 ```
 Fast path:  Browser → Cloudflare Cache → User (50ms)
