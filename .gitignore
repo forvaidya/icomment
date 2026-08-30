@@ -17,6 +17,7 @@ out/
 .env.development.local
 .env.test.local
 .env.production.local
+.dev.vars
 
 # Private keys, certificates, secrets
 NO-COMMIT/
