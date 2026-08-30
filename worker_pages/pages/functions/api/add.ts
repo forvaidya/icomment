@@ -1,3 +1,5 @@
+import type { Fetcher, PagesFunction } from '@cloudflare/workers-types';
+
 /**
  * Pages Function environment binding for Service Binding to a private Worker.
  *
