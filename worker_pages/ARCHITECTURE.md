@@ -8,9 +8,26 @@
 - **Backend business logic:** Any language (runs on your own servers)
 - **Pattern itself:** Universal (works on any platform: AWS, Azure, Python, Go, Rust, etc.)
 
+**Key constraint:** You cannot mix languages within Cloudflare Workers. The private Worker (`aspire-math`) must be TypeScript/JavaScript.
+
+**However:** If you want `aspire-math` in Python:
+1. Run it on your own server (not Cloudflare)
+2. Call it via HTTP from the BFF: `fetch('https://your-python-server/calculate')`
+3. Trade-off: Slightly slower & requires authentication, but language-agnostic
+
+**Current implementation:**
+```
+Pages (TS) → Service Binding (internal) → aspire-math Worker (TS)
+```
+
+**Alternative (Python backend):**
+```
+Pages (TS) → HTTP call (external) → aspire-math (Python on your server)
+```
+
 If you're learning the pattern to apply elsewhere:
 - The architecture is platform-agnostic
-- The TypeScript requirement applies only to Cloudflare
+- The TypeScript requirement applies only to Cloudflare Workers
 - Python, Go, Rust, etc. can implement the same pattern with different tools
 
 ---
