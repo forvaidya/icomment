@@ -1,11 +1,15 @@
 /**
  * Pages Function environment binding for Service Binding to a private Worker.
  *
- * @see https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/ Service Bindings
- * @see https://developers.cloudflare.com/workers/runtime-apis/web-crypto/#fetcher Fetcher API
+ * Service Bindings: https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/
+ * Fetcher interface: https://developers.cloudflare.com/workers/runtime-apis/web-crypto/#fetcher
  *
- * ASPIRE_MATH is a Fetcher that references the private aspire-math Worker.
+ * ASPIRE_MATH is a Fetcher interface that represents the private aspire-math Worker.
  * The Worker is configured with `workers_dev = false` to prevent public HTTP access.
+ *
+ * Key distinction:
+ * - fetch() = standard Web API (global function for HTTP requests)
+ * - Fetcher = Cloudflare Workers interface (type for Service Binding connections)
  *
  * @see https://developers.cloudflare.com/workers/configuration/compatibility-dates/ workers.dev configuration
  * @see ../wrangler.toml Service Binding configuration in Pages wrangler.toml
@@ -13,11 +17,13 @@
  */
 interface Env {
   /**
-   * Service Binding to the private aspire-math Worker.
-   * Call via: env.ASPIRE_MATH.fetch('https://aspire-math/path')
+   * Fetcher interface: represents the Service Binding to aspire-math Worker.
+   *
+   * Fetcher implements the Fetch API, so you call it like:
+   *   env.ASPIRE_MATH.fetch('https://aspire-math/path')
    *
    * No public route or workers.dev URL exists for this Worker.
-   * It is reachable only through this Service Binding.
+   * It is reachable only through this Service Binding connection.
    */
   ASPIRE_MATH: Fetcher;
 }

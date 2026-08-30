@@ -117,8 +117,15 @@ service = "aspire-math"     # The Worker's name
 
 **In your code:**
 ```typescript
+// ASPIRE_MATH is a Fetcher interface (Cloudflare Workers type)
+// It implements the fetch() API, so you call it like:
 env.ASPIRE_MATH.fetch(...)  // Uses the Service Binding
 ```
+
+**Key concepts:**
+- `fetch()` = standard Web API (function for making HTTP requests)
+- `Fetcher` = Cloudflare Workers interface (type for Service Binding connections)
+- Fetcher implements fetch(), so you use it like HTTP, but internally it's a direct Worker connection
 
 No CORS issues, no authentication headers needed—it's an internal connection.
 
