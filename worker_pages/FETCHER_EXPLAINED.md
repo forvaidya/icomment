@@ -150,16 +150,19 @@ In any IDE with TypeScript support, hover over `Fetcher` and click "Go to Defini
 
 Fetcher is documented in these places:
 
-1. **Service Bindings Overview:**
+1. **Fetch API:**
+   https://developers.cloudflare.com/workers/runtime-apis/fetch/
+
+2. **Service Bindings Overview:**
    https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/
 
-2. **Workers Runtime APIs:**
+3. **Workers Runtime APIs:**
    https://developers.cloudflare.com/workers/runtime-apis/
 
-3. **TypeScript Definitions (Source of Truth):**
+4. **TypeScript Definitions (Source of Truth):**
    https://github.com/cloudflare/workers-types
 
-4. **Cloudflare Workers TypeScript Handbook:**
+5. **Cloudflare Workers TypeScript Handbook:**
    https://developers.cloudflare.com/workers/tooling/typescript/
 
 ---

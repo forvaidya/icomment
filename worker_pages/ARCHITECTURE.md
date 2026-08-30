@@ -118,7 +118,7 @@ Therefore, one of these must exist between the browser and the private Worker:
 - a separate public BFF Worker
 - a server-rendered or server-handled application endpoint
 
-A Pages Function receives Service Bindings as `Fetcher` type environment variables. The `Fetcher` API provides a `.fetch()` method for Worker-to-Worker communication. See [Pages Functions](pages/functions/api/add.ts) and the [Fetcher documentation](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/).
+A Pages Function receives Service Bindings as `Fetcher` type environment variables. The `Fetcher` API provides a `.fetch()` method for Worker-to-Worker communication. See [Pages Functions](pages/functions/api/add.ts) and the [Fetch API documentation](https://developers.cloudflare.com/workers/runtime-apis/fetch/).
 
 That browser-facing endpoint is publicly routable and must be protected with application authentication, rate limiting, validation, and WAF controls. The sensitive business Worker remains private behind it.
 

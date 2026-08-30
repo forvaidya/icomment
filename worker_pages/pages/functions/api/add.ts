@@ -2,7 +2,8 @@
  * Pages Function environment binding for Service Binding to a private Worker.
  *
  * Service Bindings: https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/
- * Fetcher interface: https://developers.cloudflare.com/workers/runtime-apis/web-crypto/#fetcher
+ * Fetch API: https://developers.cloudflare.com/workers/runtime-apis/fetch/
+ * Fetcher interface: @cloudflare/workers-types (see https://github.com/cloudflare/workers-types)
  *
  * ASPIRE_MATH is a Fetcher interface that represents the private aspire-math Worker.
  * The Worker is configured with `workers_dev = false` to prevent public HTTP access.

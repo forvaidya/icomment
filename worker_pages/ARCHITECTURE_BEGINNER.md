@@ -228,8 +228,9 @@ Browser → /api/add (Pages Function) → [Service Binding] → aspire-math (pri
 
 1. **Understand Fetcher (no magic!):** [FETCHER_EXPLAINED.md](FETCHER_EXPLAINED.md) — shows it's just a TypeScript interface
 2. **Read the full architecture:** [ARCHITECTURE.md](ARCHITECTURE.md)
-3. **Understand Service Bindings:** [Cloudflare Service Bindings docs](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/)
-4. **See the source code:** [@cloudflare/workers-types on GitHub](https://github.com/cloudflare/workers-types)
+3. **Learn Fetch API:** [Cloudflare Fetch API docs](https://developers.cloudflare.com/workers/runtime-apis/fetch/)
+4. **Understand Service Bindings:** [Cloudflare Service Bindings docs](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/)
+5. **See the source code:** [@cloudflare/workers-types on GitHub](https://github.com/cloudflare/workers-types)
 5. **Explore the code:**
    - Pages Function: [pages/functions/api/add.ts](pages/functions/api/add.ts)
    - Private Worker: [workers/aspire-math/](workers/aspire-math/)
