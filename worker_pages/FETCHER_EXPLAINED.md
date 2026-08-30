@@ -40,10 +40,19 @@ interface Fetcher {
 
 **That's it.** `Fetcher` just says: "I have a `.fetch()` method that works like the standard Web Fetch API."
 
-### 3. Actual Official Source
-The actual, current definition is here:
-- **GitHub:** https://github.com/cloudflare/workers-types
-- **NPM:** https://www.npmjs.com/package/@cloudflare/workers-types
+### 3. Official Source (Cloudflare Maintained)
+The **official** TypeScript type definitions are maintained by Cloudflare here:
+- **GitHub (Official):** https://github.com/cloudflare/workers-types
+- **NPM (Official):** https://www.npmjs.com/package/@cloudflare/workers-types
+
+**Note:** This repo is official but **not prominently linked** in Cloudflare's main documentation. 
+You typically find it through:
+1. Hovering `Fetcher` in VS Code → "Go to Definition"
+2. Checking `node_modules/@cloudflare/workers-types`
+3. Searching GitHub directly
+
+This is by design—Cloudflare assumes you'll discover it through your IDE or package manager, 
+not by browsing docs.
 
 ---
 
