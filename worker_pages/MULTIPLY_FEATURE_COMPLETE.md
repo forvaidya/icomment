@@ -104,15 +104,37 @@ if __name__ == "__main__":
 - Server: `knuth.awanipro.com` (CN + SAN for both hostname and IP)
 - Client: `cloudflare-worker-client` (for Pages Function mTLS)
 
-**Uploaded to Cloudflare**:
-```
-ID: 56964753-03ed-4f3e-89b3-89873425d0ed
-Name: laptop-backend-knuth
-Issuer: CN=laptop-backend-ca
-Expires: 8/30/2027
+**Upload to Cloudflare** (one-time):
+```bash
+wrangler mtls-certificate upload \
+  --cert laptop-backend/certs/out/client-cert.pem \
+  --key laptop-backend/certs/out/client-key.pem \
+  --name laptop-backend-knuth
 ```
 
-**Status**: Awaiting Let's Encrypt cert to replace self-signed.
+**Result**:
+```
+Success! Uploaded mTLS Certificate laptop-backend-knuth
+ID: 56964753-03ed-4f3e-89b3-89873425d0ed
+Issuer: CN=laptop-backend-ca
+Expires on 8/30/2027
+```
+
+**Configure in wrangler.toml** (`pages/wrangler.toml`):
+```toml
+[[mtls_certificates]]
+binding = "LAPTOP_BACKEND_MTLS"
+certificate_id = "56964753-03ed-4f3e-89b3-89873425d0ed"
+```
+
+**Use in Pages Function** (when HTTPS is enabled):
+```typescript
+const response = await env.LAPTOP_BACKEND_MTLS.fetch(
+  'https://knuth.awanipro.com:9000/multiply?a=5&b=6'
+);
+```
+
+**Status**: Certificate uploaded to Cloudflare. Awaiting Let's Encrypt server cert to enable proper mTLS flow.
 
 ## Testing
 
@@ -145,15 +167,69 @@ Expires: 8/30/2027
 - Cloudflare Access + Service Tokens as alternative to mTLS
 - Tunnel support (currently blocked by tunnel's client-cert limitation)
 
+## mTLS Certificate Workflow (End-to-End)
+
+### Step 1: Generate Certificates (Local)
+```bash
+cd laptop-backend/certs
+./generate-certs.sh
+# Outputs: ca-cert.pem, server-cert.pem, client-cert.pem, etc.
+```
+
+### Step 2: Upload Client Cert to Cloudflare
+```bash
+wrangler mtls-certificate upload \
+  --cert laptop-backend/certs/out/client-cert.pem \
+  --key laptop-backend/certs/out/client-key.pem \
+  --name laptop-backend-knuth
+
+# Returns: certificate_id = 56964753-03ed-4f3e-89b3-89873425d0ed
+```
+
+### Step 3: Configure Binding in wrangler.toml
+```toml
+[[mtls_certificates]]
+binding = "LAPTOP_BACKEND_MTLS"
+certificate_id = "56964753-03ed-4f3e-89b3-89873425d0ed"
+```
+
+### Step 4: Deploy to Cloudflare Pages
+```bash
+wrangler pages deploy --project-name aspire-pages
+```
+
+### Step 5: Use Binding in Pages Function
+```typescript
+interface Env {
+  LAPTOP_BACKEND_MTLS: Fetcher;
+}
+
+const response = await env.LAPTOP_BACKEND_MTLS.fetch(
+  'https://knuth.awanipro.com:9000/multiply?a=5&b=6'
+);
+```
+
+**Key Distinction**: 
+- **Secrets** (`wrangler pages secret put`) → environment variables (text strings)
+- **mTLS Certificates** (`wrangler mtls-certificate upload`) → Fetcher bindings (TLS client cert presentation)
+
+### Current Status
+- ✅ Certificates generated with SAN (Subject Alternative Name)
+- ✅ Client cert uploaded to Cloudflare (ID: `56964753-03ed-4f3e-89b3-89873425d0ed`)
+- ✅ Binding configured in wrangler.toml
+- ✅ Pages Function code ready (using `env.LAPTOP_BACKEND_MTLS`)
+- ⏳ Awaiting server HTTPS + Let's Encrypt cert to complete mTLS handshake
+
 ## Key Decisions
 
 | Decision | Reason |
 |----------|--------|
-| Plain HTTP (test mode) | Self-signed cert fails Cloudflare validation (526 error) |
+| Plain HTTP (test mode) | Self-signed server cert fails Cloudflare validation (526 error) |
 | DNS Proxy: OFF | Allows direct IP routing without Cloudflare interception |
 | Separate calculator sections | Demonstrates different calling patterns (Service Binding vs direct) |
 | Red marker on Multiply | Visual distinction between internal (Add) and external (Multiply) |
 | Code committed, certs in S3 | Keeps repo clean; certs are deployment-time secret |
+| mTLS Binding approach | Official Cloudflare pattern for client cert presentation |
 
 ## Documentation References
 
