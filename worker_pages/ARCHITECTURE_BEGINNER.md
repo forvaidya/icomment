@@ -19,6 +19,25 @@
 
 The **architecture concept** (public frontend + private backend + BFF) works anywhere. The **Cloudflare implementation** requires TypeScript.
 
+## 🔴 Critical: TypeScript is Non-Negotiable
+
+**Learning TypeScript is essential for this path.**
+
+If you don't know TypeScript, you cannot:
+- Understand Fetcher, Env, interfaces
+- Write Service Bindings
+- Use Cloudflare Workers/Pages
+- Debug type errors at compile time
+
+**TypeScript is not optional.** It's your first line of defense against bugs.
+
+**Learn TypeScript first:**
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/) (official)
+- [Cloudflare TypeScript Guide](https://developers.cloudflare.com/workers/tooling/typescript/)
+- Focus: interfaces, types, generics, type safety
+
+**Then come back to this guide** with that foundation.
+
 ---
 
 ## The Problem (Real World Analogy)

@@ -1,5 +1,27 @@
 # Public Pages and Private Workers
 
+## ⚠️ TypeScript is Non-Negotiable
+
+**You cannot use this architecture without TypeScript.**
+
+Understanding TypeScript is the foundation for everything here:
+- Type safety catches bugs at compile time
+- Interfaces define contracts (like `Env`, `Fetcher`)
+- Type checking prevents runtime errors
+- IDE autocomplete requires types
+
+**Before proceeding, learn TypeScript:**
+- [TypeScript Handbook](https://www.typescriptlang.org/docs/) (official)
+- [Cloudflare TypeScript Guide](https://developers.cloudflare.com/workers/tooling/typescript/)
+
+Focus on:
+- Interfaces and types
+- Type annotations
+- Generics
+- Type safety benefits
+
+---
+
 ## Platform & Language Note
 
 **This is a Cloudflare-specific implementation.**
