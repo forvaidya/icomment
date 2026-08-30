@@ -2,41 +2,27 @@
 
 ## Preamble
 
-Cloudflare is a serverless platform. At least on the free tier, it does not provide the kind of VPC controls that let an operator design and manage a conventional network topology. Many Cloudflare blueprints and tutorials therefore expose Workers through public routes.
+Cloudflare is serverless. At least on the free tier, it does not provide conventional VPC or network-topology controls, so many tutorials expose Workers through public routes.
 
-This paper explores an alternative way to establish a proper frontend-to-backend connection: keep the presentation layer on publicly routable Pages, while keeping backend capabilities in Workers that have no public route and can be reached only through Service Bindings.
+This paper presents an alternative: keep presentation on public Pages and backend capabilities in Workers with no public route, reachable only through Service Bindings.
 
-The frontend can also be protected with an identity provider such as [Clerk](https://clerk.com/) or [Auth0](https://auth0.com/). This separates customer authentication from private service connectivity and keeps each concern in the layer where it belongs.
+The frontend can use an identity provider such as [Clerk](https://clerk.com/) or [Auth0](https://auth0.com/), keeping customer authentication separate from private service connectivity.
 
 ## Intent
 
-Use publicly routable Cloudflare Pages for presentation and private Cloudflare Workers for business capabilities.
+Use public Pages for presentation and private Workers for business capabilities. Private Workers have no public `workers.dev` hostname or route; their only entry point is a Service Binding from a trusted caller.
 
-The frontend should be easy for a browser to reach. The business Worker should not be reachable from the public Internet. It should have no public `workers.dev` hostname and no public route. The only supported entry point should be a Service Binding from an explicitly trusted caller.
-
-This keeps the system divided into two clear responsibilities:
+This separates responsibilities:
 
 - Pages owns presentation: HTML, JavaScript, CSS, images, and browser delivery.
 - Workers own decisions: business logic, calculations, database access, secrets, validation, and integrations.
 
 ## Topology
 
-```text
-Internet
-   |
-   v
-Cloudflare Pages
-(public static presentation)
-   |
-   v
-Pages Function or BFF facade
-(public browser-facing boundary)
-   |
-   | ASPIRE_MATH Service Binding
-   v
-Private Worker: aspire-math
-(no public route, no workers.dev URL)
-```
+![Public Pages and private Workers architecture](architecture.png)
+
+[Open the architecture diagram as a PNG](architecture.png)
+
 
 The private Worker is analogous to a service in a private subnet. This is an architectural analogy, not a literal private network: the Worker is isolated by the absence of public ingress and by Service Binding access control.
 
@@ -54,6 +40,8 @@ The browser never calls `aspire-math` directly and never needs to know its inter
 ## Ingress Rules
 
 The private Worker must remain configured with:
+
+See the [aspire-math Worker configuration](workers/aspire-math/wrangler.toml).
 
 - `workers_dev = false`
 - no `routes` entry
@@ -73,6 +61,8 @@ A Service Binding is the connection between the Pages-side BFF and the private W
 - independent deployment of the Pages project and private Worker
 
 The binding name is part of the caller's configuration. In this system the intended name is `ASPIRE_MATH` and it points to the Worker service `aspire-math`.
+
+See the [Pages Service Binding configuration](pages/wrangler.toml).
 
 ## Tokens and JWTs
 
