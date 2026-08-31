@@ -28,6 +28,18 @@ if __name__ == "__main__":
 
     if args.no_mtls:
         # Test mode: plain HTTP
+        print("\n" + "="*60)
+        print("⚠️  MTLS DISABLED !!")
+        print("="*60)
+        print("Server running in TEST MODE (plain HTTP, no client cert required)")
+        print("\nTo enable mTLS (require client certificates):")
+        print("  python3 main.py")
+        print("\nWith mTLS enabled, only clients with valid certs can connect:")
+        print("  curl --cert certs/out/client-cert.pem \\")
+        print("       --key certs/out/client-key.pem \\")
+        print("       --cacert certs/out/ca-cert.pem \\")
+        print("       https://localhost:9000/multiply?a=3&b=4")
+        print("="*60 + "\n")
         uvicorn.run(
             app,
             host="0.0.0.0",
@@ -36,6 +48,18 @@ if __name__ == "__main__":
         )
     else:
         # Production: HTTPS + mTLS client cert verification
+        print("\n" + "="*60)
+        print("✅ MTLS ENABLED")
+        print("="*60)
+        print("Server running with mutual TLS (client cert verification required)")
+        print("\nClients MUST present valid certificate signed by CA:")
+        print("  curl --cert certs/out/client-cert.pem \\")
+        print("       --key certs/out/client-key.pem \\")
+        print("       --cacert certs/out/ca-cert.pem \\")
+        print("       https://localhost:9000/multiply?a=3&b=4")
+        print("\nWithout client cert, connection will be rejected.")
+        print("To run in test mode (plain HTTP): python3 main.py --no-mtls")
+        print("="*60 + "\n")
         certs_dir = os.path.join(os.path.dirname(__file__), "certs", "out")
         uvicorn.run(
             app,
