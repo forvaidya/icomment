@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -E  # Keep error traps, but don't exit on every error
 
 echo "Setting up Let's Encrypt HTTPS for knuth backend"
 echo "=================================================="
@@ -49,9 +49,12 @@ sudo certbot certonly \
   -m mahesh.vaidya.aitools@gmail.com \
   -d "$DOMAIN"
 
-if [ -d "$CERT_PATH" ]; then
-    echo ""
-    echo "✅ Certificate installed:"
+echo ""
+echo "Checking for certificate..."
+sleep 2  # Give certbot time to finalize
+
+if [ -f "$CERT_PATH/fullchain.pem" ] && [ -f "$CERT_PATH/privkey.pem" ]; then
+    echo "✅ Certificate found:"
     echo "  Cert: $CERT_PATH/fullchain.pem"
     echo "  Key:  $CERT_PATH/privkey.pem"
     echo ""
@@ -61,18 +64,37 @@ if [ -d "$CERT_PATH" ]; then
     mkdir -p "$OUT_DIR"
 
     echo "Copying to local certs/out/ with standard names..."
-    sudo cp "$CERT_PATH/fullchain.pem" "$OUT_DIR/server-cert.pem"
-    sudo cp "$CERT_PATH/privkey.pem" "$OUT_DIR/server-key.pem"
-    sudo chown $USER:$USER "$OUT_DIR/server-cert.pem" "$OUT_DIR/server-key.pem"
+    sudo cp "$CERT_PATH/fullchain.pem" "$OUT_DIR/server-cert.pem" 2>/dev/null || {
+        echo "Using sudo for copy..."
+        sudo sh -c "cp $CERT_PATH/fullchain.pem $OUT_DIR/server-cert.pem"
+    }
+    sudo cp "$CERT_PATH/privkey.pem" "$OUT_DIR/server-key.pem" 2>/dev/null || {
+        echo "Using sudo for key copy..."
+        sudo sh -c "cp $CERT_PATH/privkey.pem $OUT_DIR/server-key.pem"
+    }
+    sudo chown $USER:$USER "$OUT_DIR/server-cert.pem" "$OUT_DIR/server-key.pem" 2>/dev/null || true
 
-    echo ""
-    echo "✅ Ready to use:"
-    echo "  python3 main.py --cert certs/out/server-cert.pem \\"
-    echo "                   --key certs/out/server-key.pem \\"
-    echo "                   --ca certs/out/ca-cert.pem"
-    echo ""
-    echo "Auto-renewal: certbot will auto-update $CERT_PATH/ (copy to certs/out manually after renewal)"
+    # Verify files exist
+    if [ -f "$OUT_DIR/server-cert.pem" ] && [ -f "$OUT_DIR/server-key.pem" ]; then
+        echo ""
+        echo "✅ Certificate ready to use:"
+        echo "  Local cert: $OUT_DIR/server-cert.pem"
+        echo "  Local key:  $OUT_DIR/server-key.pem"
+        echo ""
+        echo "✅ Ready to run:"
+        echo "  python3 main.py"
+        echo ""
+        echo "Manual renewal: Re-run ./setup-https.sh before $(date -d '+89 days' '+%Y-%m-%d')"
+    else
+        echo "❌ Failed to copy certificate to certs/out/"
+        echo "Try manually:"
+        echo "  sudo cp $CERT_PATH/fullchain.pem certs/out/server-cert.pem"
+        echo "  sudo cp $CERT_PATH/privkey.pem certs/out/server-key.pem"
+        echo "  sudo chown $USER certs/out/server-*"
+        exit 1
+    fi
 else
-    echo "❌ Certificate setup failed"
+    echo "❌ Certificate not found at $CERT_PATH"
+    echo "Check /var/log/letsencrypt/letsencrypt.log for errors"
     exit 1
 fi
