@@ -18,7 +18,10 @@ read -p "Press enter to continue (or Ctrl+C to cancel)..."
 if ! command -v certbot &> /dev/null; then
     echo "Installing certbot..."
     sudo apt-get update
-    sudo apt-get install -y certbot
+    sudo apt-get install -y certbot certbot-dns-cloudflare
+else
+    echo "Checking for Cloudflare DNS plugin..."
+    pip3 install certbot-dns-cloudflare
 fi
 
 # Get certificate
@@ -27,7 +30,34 @@ CERT_PATH="/etc/letsencrypt/live/$DOMAIN"
 
 echo ""
 echo "Getting certificate from Let's Encrypt for $DOMAIN..."
-sudo certbot certonly --standalone --non-interactive --agree-tos \
+echo ""
+echo "Using DNS validation (no port 80 needed)"
+echo ""
+
+# Check if Cloudflare credentials exist
+if [ ! -f ~/.cloudflare.ini ]; then
+    echo "Cloudflare API token not found!"
+    echo "Create it:"
+    echo "  1. Go to https://dash.cloudflare.com/profile/api-tokens"
+    echo "  2. Create token with 'Edit zone DNS' permission for knuth.awanipro.com"
+    echo "  3. Create file ~/.cloudflare.ini with:"
+    echo "     dns_cloudflare_api_token = YOUR_TOKEN_HERE"
+    echo "  4. chmod 600 ~/.cloudflare.ini"
+    echo ""
+    read -p "Paste your API token: " token
+    mkdir -p ~
+    echo "dns_cloudflare_api_token = $token" > ~/.cloudflare.ini
+    chmod 600 ~/.cloudflare.ini
+    echo "✓ Credentials saved to ~/.cloudflare.ini"
+fi
+
+echo ""
+echo "Running certbot with DNS validation..."
+
+# Use DNS validation via Cloudflare
+sudo certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials ~/.cloudflare.ini \
+  --non-interactive --agree-tos \
   -m mahesh.vaidya.aitools@gmail.com \
   -d "$DOMAIN"
 
