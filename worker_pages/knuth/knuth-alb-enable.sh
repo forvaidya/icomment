@@ -61,6 +61,16 @@ class KnuthAlbStack(cdk.Stack):
     def __init__(self, scope, id, **kwargs):
         super().__init__(scope, id, **kwargs)
 
+        # Tags for all resources
+        tags = {
+            "Project": "knuth",
+            "Service": "backend",
+            "Component": "load-balancer",
+            "Environment": "test",
+            "ManagedBy": "CDK",
+            "CostCenter": "personal"
+        }
+
         # Get VPC and EC2 instance
         vpc = ec2.Vpc.from_lookup(self, "VPC", is_default=False)
 
@@ -71,6 +81,10 @@ class KnuthAlbStack(cdk.Stack):
             allow_all_outbound=True,
             description="Security group for knuth ALB"
         )
+        cdk.Tags.of(alb_sg).add("Name", "knuth-alb-sg")
+        for key, value in tags.items():
+            cdk.Tags.of(alb_sg).add(key, value)
+
         alb_sg.add_ingress_rule(
             peer=ec2.Peer.any_ipv4(),
             connection=ec2.Port.tcp(443),
@@ -90,6 +104,9 @@ class KnuthAlbStack(cdk.Stack):
             security_group=alb_sg,
             load_balancer_name="knuth-alb"
         )
+        cdk.Tags.of(alb).add("Name", "knuth-alb")
+        for key, value in tags.items():
+            cdk.Tags.of(alb).add(key, value)
 
         # Request ACM certificate
         cert = acm.Certificate(
@@ -113,6 +130,9 @@ class KnuthAlbStack(cdk.Stack):
                 unhealthy_threshold_count=2
             )
         )
+        cdk.Tags.of(tg).add("Name", "knuth-target-group")
+        for key, value in tags.items():
+            cdk.Tags.of(tg).add(key, value)
 
         # Add EC2 instance to target group (update instance ID)
         instance = ec2.Instance.from_instance_attributes(
@@ -156,11 +176,19 @@ echo ""
 echo "✅ ALB created!"
 echo ""
 echo "Next steps:"
-echo "  1. Update DNS to point to ALB DNS name (check CloudFormation outputs)"
-echo "  2. Validate ACM certificate in AWS Console"
-echo "  3. Test: curl https://knuth.awanipro.com/multiply?a=3&b=4"
+echo "  1. Add EC2 instance to target group 'knuth-target-group' manually"
+echo "  2. Update DNS to point to ALB DNS name (check CloudFormation outputs)"
+echo "  3. Validate ACM certificate in AWS Console"
+echo "  4. Test: curl https://knuth.awanipro.com/multiply?a=3&b=4"
 echo ""
 echo "To tear down: knuth-alb-disable.sh"
+echo ""
+echo "Tags applied to all resources:"
+echo "  - Project: knuth"
+echo "  - Service: backend"
+echo "  - Component: load-balancer"
+echo "  - Environment: test"
+echo "  - ManagedBy: CDK"
 
 # Cleanup
 cd -
