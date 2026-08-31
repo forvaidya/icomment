@@ -24,6 +24,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-mtls", action="store_true", help="Run plain HTTP without mTLS (test mode)")
+    parser.add_argument("--cert", type=str, default="/etc/letsencrypt/live/knuth.awanipro.com/fullchain.pem", help="Path to SSL certificate (default: Let's Encrypt)")
+    parser.add_argument("--key", type=str, default="/etc/letsencrypt/live/knuth.awanipro.com/privkey.pem", help="Path to SSL private key (default: Let's Encrypt)")
+    parser.add_argument("--ca", type=str, default="certs/out/ca-cert.pem", help="Path to CA cert for client verification")
     args = parser.parse_args()
 
     if args.no_mtls:
@@ -48,10 +51,28 @@ if __name__ == "__main__":
         )
     else:
         # Production: HTTPS + mTLS client cert verification
+        # Requires cert/key files (default: Let's Encrypt, can override with --cert/--key/--ca)
+        if not os.path.exists(args.cert):
+            print("\n" + "="*60)
+            print("❌ HTTPS certificate not found!")
+            print("="*60)
+            print(f"Expected at: {args.cert}")
+            print("\nTo set up Let's Encrypt certificate:")
+            print("  ./setup-https.sh")
+            print("\nOr use self-signed certs for testing:")
+            print("  python3 main.py --cert certs/out/server-cert.pem \\")
+            print("                   --key certs/out/server-key.pem \\")
+            print("                   --ca certs/out/ca-cert.pem")
+            print("="*60 + "\n")
+            exit(1)
+
         print("\n" + "="*60)
-        print("✅ MTLS ENABLED")
+        print("✅ MTLS ENABLED (mTLS required)")
         print("="*60)
         print("Server running with mutual TLS (client cert verification required)")
+        print(f"Certificate: {args.cert}")
+        print(f"Private Key: {args.key}")
+        print(f"CA Cert:     {args.ca}")
         print("\nClients MUST present valid certificate signed by CA:")
         print("  curl --cert certs/out/client-cert.pem \\")
         print("       --key certs/out/client-key.pem \\")
@@ -60,14 +81,14 @@ if __name__ == "__main__":
         print("\nWithout client cert, connection will be rejected.")
         print("To run in test mode (plain HTTP): python3 main.py --no-mtls")
         print("="*60 + "\n")
-        certs_dir = os.path.join(os.path.dirname(__file__), "certs", "out")
+
         uvicorn.run(
             app,
             host="0.0.0.0",
             port=9000,
-            ssl_keyfile=os.path.join(certs_dir, "server-key.pem"),
-            ssl_certfile=os.path.join(certs_dir, "server-cert.pem"),
-            ssl_ca_certs=os.path.join(certs_dir, "ca-cert.pem"),
+            ssl_keyfile=args.key,
+            ssl_certfile=args.cert,
+            ssl_ca_certs=args.ca,
             ssl_cert_reqs="required",
             log_level="info"
         )
