@@ -4,21 +4,22 @@ set -e
 echo "Setting up Let's Encrypt HTTPS for knuth backend"
 echo "=================================================="
 echo ""
-echo "Method: DNS Validation via Cloudflare"
+echo "Method: Manual DNS Validation"
 echo "  - No port 80/443 required for validation"
-echo "  - Certbot adds TXT record automatically"
-echo "  - Let's Encrypt verifies DNS record"
+echo "  - No API token needed"
+echo "  - You manually add TXT record to Cloudflare DNS"
 echo ""
 echo "Prerequisites:"
 echo "  1. Domain resolves: knuth.awanipro.com A 15.206.133.75 ✓"
-echo "  2. Cloudflare API token (with DNS edit permission)"
+echo "  2. Access to Cloudflare DNS (dash.cloudflare.com)"
 echo "  3. Run as sudo"
 echo ""
 echo "What will happen:"
-echo "  1. You provide Cloudflare API token"
-echo "  2. Certbot adds TXT record _acme-challenge.knuth.awanipro.com via Cloudflare API"
-echo "  3. Let's Encrypt validates TXT record in DNS"
-echo "  4. Certificate issued and saved to certs/out/"
+echo "  1. Certbot shows TXT record details to add"
+echo "  2. You add TXT record: _acme-challenge.knuth.awanipro.com"
+echo "  3. You press Enter to continue"
+echo "  4. Let's Encrypt validates TXT record in DNS"
+echo "  5. Certificate issued and saved to certs/out/"
 echo ""
 read -p "Press enter to continue (or Ctrl+C to cancel)..."
 
@@ -26,10 +27,7 @@ read -p "Press enter to continue (or Ctrl+C to cancel)..."
 if ! command -v certbot &> /dev/null; then
     echo "Installing certbot..."
     sudo apt-get update
-    sudo apt-get install -y certbot certbot-dns-cloudflare
-else
-    echo "Checking for Cloudflare DNS plugin..."
-    pip3 install certbot-dns-cloudflare
+    sudo apt-get install -y certbot
 fi
 
 # Get certificate
@@ -39,33 +37,15 @@ CERT_PATH="/etc/letsencrypt/live/$DOMAIN"
 echo ""
 echo "Getting certificate from Let's Encrypt for $DOMAIN..."
 echo ""
-echo "Using DNS validation (no port 80 needed)"
+echo "Running certbot with manual DNS validation..."
+echo "You will be asked to add a TXT record to your DNS."
 echo ""
 
-# Check if Cloudflare credentials exist
-if [ ! -f ~/.cloudflare.ini ]; then
-    echo "Cloudflare API token not found!"
-    echo "Create it:"
-    echo "  1. Go to https://dash.cloudflare.com/profile/api-tokens"
-    echo "  2. Create token with 'Edit zone DNS' permission for knuth.awanipro.com"
-    echo "  3. Create file ~/.cloudflare.ini with:"
-    echo "     dns_cloudflare_api_token = YOUR_TOKEN_HERE"
-    echo "  4. chmod 600 ~/.cloudflare.ini"
-    echo ""
-    read -p "Paste your API token: " token
-    mkdir -p ~
-    echo "dns_cloudflare_api_token = $token" > ~/.cloudflare.ini
-    chmod 600 ~/.cloudflare.ini
-    echo "✓ Credentials saved to ~/.cloudflare.ini"
-fi
-
-echo ""
-echo "Running certbot with DNS validation..."
-
-# Use DNS validation via Cloudflare
-sudo certbot certonly --dns-cloudflare \
-  --dns-cloudflare-credentials ~/.cloudflare.ini \
-  --non-interactive --agree-tos \
+# Use manual DNS validation (user adds TXT record themselves)
+sudo certbot certonly \
+  --manual \
+  --preferred-challenges dns \
+  --agree-tos \
   -m mahesh.vaidya.aitools@gmail.com \
   -d "$DOMAIN"
 
