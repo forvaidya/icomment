@@ -24,8 +24,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-mtls", action="store_true", help="Run plain HTTP without mTLS (test mode)")
-    parser.add_argument("--cert", type=str, default="/etc/letsencrypt/live/knuth.awanipro.com/fullchain.pem", help="Path to SSL certificate (default: Let's Encrypt)")
-    parser.add_argument("--key", type=str, default="/etc/letsencrypt/live/knuth.awanipro.com/privkey.pem", help="Path to SSL private key (default: Let's Encrypt)")
+    parser.add_argument("--cert", type=str, default="certs/out/server-cert.pem", help="Path to SSL certificate")
+    parser.add_argument("--key", type=str, default="certs/out/server-key.pem", help="Path to SSL private key")
     parser.add_argument("--ca", type=str, default="certs/out/ca-cert.pem", help="Path to CA cert for client verification")
     args = parser.parse_args()
 
