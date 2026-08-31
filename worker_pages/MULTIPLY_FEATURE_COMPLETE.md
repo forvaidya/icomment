@@ -61,7 +61,7 @@ fetch('http://knuth.awanipro.com:9000/multiply?...')
 
 ## Backend (AWS EC2)
 
-**File**: `laptop-backend/main.py`
+**File**: `knuth/main.py`
 
 ```python
 if __name__ == "__main__":
@@ -99,37 +99,37 @@ if __name__ == "__main__":
 
 **Location**: `s3://521170656618--trader--builds/mtls-cloudflare-01-sep-26/`
 
-**Generated**: `laptop-backend/certs/generate-certs.sh`
-- CA: `laptop-backend-ca` (self-signed, 10-year validity)
+**Generated**: `knuth/certs/generate-certs.sh`
+- CA: `knuth-ca` (self-signed, 10-year validity)
 - Server: `knuth.awanipro.com` (CN + SAN for both hostname and IP)
 - Client: `cloudflare-worker-client` (for Pages Function mTLS)
 
 **Upload to Cloudflare** (one-time):
 ```bash
 wrangler mtls-certificate upload \
-  --cert laptop-backend/certs/out/client-cert.pem \
-  --key laptop-backend/certs/out/client-key.pem \
-  --name laptop-backend-knuth
+  --cert knuth/certs/out/client-cert.pem \
+  --key knuth/certs/out/client-key.pem \
+  --name knuth-mtls
 ```
 
 **Result**:
 ```
-Success! Uploaded mTLS Certificate laptop-backend-knuth
+Success! Uploaded mTLS Certificate knuth-mtls
 ID: 56964753-03ed-4f3e-89b3-89873425d0ed
-Issuer: CN=laptop-backend-ca
+Issuer: CN=knuth-ca
 Expires on 8/30/2027
 ```
 
 **Configure in wrangler.toml** (`pages/wrangler.toml`):
 ```toml
 [[mtls_certificates]]
-binding = "LAPTOP_BACKEND_MTLS"
+binding = "KNUTH_MTLS"
 certificate_id = "56964753-03ed-4f3e-89b3-89873425d0ed"
 ```
 
 **Use in Pages Function** (when HTTPS is enabled):
 ```typescript
-const response = await env.LAPTOP_BACKEND_MTLS.fetch(
+const response = await env.KNUTH_MTLS.fetch(
   'https://knuth.awanipro.com:9000/multiply?a=5&b=6'
 );
 ```
@@ -171,7 +171,7 @@ const response = await env.LAPTOP_BACKEND_MTLS.fetch(
 
 ### Step 1: Generate Certificates (Local)
 ```bash
-cd laptop-backend/certs
+cd knuth/certs
 ./generate-certs.sh
 # Outputs: ca-cert.pem, server-cert.pem, client-cert.pem, etc.
 ```
@@ -179,9 +179,9 @@ cd laptop-backend/certs
 ### Step 2: Upload Client Cert to Cloudflare
 ```bash
 wrangler mtls-certificate upload \
-  --cert laptop-backend/certs/out/client-cert.pem \
-  --key laptop-backend/certs/out/client-key.pem \
-  --name laptop-backend-knuth
+  --cert knuth/certs/out/client-cert.pem \
+  --key knuth/certs/out/client-key.pem \
+  --name knuth-mtls
 
 # Returns: certificate_id = 56964753-03ed-4f3e-89b3-89873425d0ed
 ```
@@ -189,7 +189,7 @@ wrangler mtls-certificate upload \
 ### Step 3: Configure Binding in wrangler.toml
 ```toml
 [[mtls_certificates]]
-binding = "LAPTOP_BACKEND_MTLS"
+binding = "KNUTH_MTLS"
 certificate_id = "56964753-03ed-4f3e-89b3-89873425d0ed"
 ```
 
@@ -201,10 +201,10 @@ wrangler pages deploy --project-name aspire-pages
 ### Step 5: Use Binding in Pages Function
 ```typescript
 interface Env {
-  LAPTOP_BACKEND_MTLS: Fetcher;
+  KNUTH_MTLS: Fetcher;
 }
 
-const response = await env.LAPTOP_BACKEND_MTLS.fetch(
+const response = await env.KNUTH_MTLS.fetch(
   'https://knuth.awanipro.com:9000/multiply?a=5&b=6'
 );
 ```
@@ -217,7 +217,7 @@ const response = await env.LAPTOP_BACKEND_MTLS.fetch(
 - ✅ Certificates generated with SAN (Subject Alternative Name)
 - ✅ Client cert uploaded to Cloudflare (ID: `56964753-03ed-4f3e-89b3-89873425d0ed`)
 - ✅ Binding configured in wrangler.toml
-- ✅ Pages Function code ready (using `env.LAPTOP_BACKEND_MTLS`)
+- ✅ Pages Function code ready (using `env.KNUTH_MTLS`)
 - ⏳ Awaiting server HTTPS + Let's Encrypt cert to complete mTLS handshake
 
 ## Key Decisions
@@ -249,7 +249,7 @@ wrangler pages deploy --project-name aspire-pages
 
 **Server** (AWS):
 ```bash
-cd ~/icomment/worker_pages/laptop-backend
+cd ~/icomment/worker_pages/knuth
 python3 main.py
 ```
 

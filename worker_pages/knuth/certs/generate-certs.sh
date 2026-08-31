@@ -8,7 +8,7 @@ mkdir -p "$OUT_DIR"
 # CA (self-signed)
 openssl genrsa -out "$OUT_DIR/ca-key.pem" 2048
 openssl req -new -x509 -days 3650 -key "$OUT_DIR/ca-key.pem" -out "$OUT_DIR/ca-cert.pem" \
-  -subj "/CN=laptop-backend-ca"
+  -subj "/CN=knuth-ca"
 
 # Server cert (signed by CA) with SAN
 openssl genrsa -out "$OUT_DIR/server-key.pem" 2048
