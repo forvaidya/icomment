@@ -37,11 +37,23 @@ if [ -d "$CERT_PATH" ]; then
     echo "  Cert: $CERT_PATH/fullchain.pem"
     echo "  Key:  $CERT_PATH/privkey.pem"
     echo ""
-    echo "To use in main.py, update cert paths to:"
-    echo "  ssl_certfile=$CERT_PATH/fullchain.pem"
-    echo "  ssl_keyfile=$CERT_PATH/privkey.pem"
+
+    # Copy to local certs/out directory with standard names
+    OUT_DIR="$(cd "$(dirname "$0")" && pwd)/certs/out"
+    mkdir -p "$OUT_DIR"
+
+    echo "Copying to local certs/out/ with standard names..."
+    sudo cp "$CERT_PATH/fullchain.pem" "$OUT_DIR/server-cert.pem"
+    sudo cp "$CERT_PATH/privkey.pem" "$OUT_DIR/server-key.pem"
+    sudo chown $USER:$USER "$OUT_DIR/server-cert.pem" "$OUT_DIR/server-key.pem"
+
     echo ""
-    echo "Auto-renewal is set up by certbot."
+    echo "✅ Ready to use:"
+    echo "  python3 main.py --cert certs/out/server-cert.pem \\"
+    echo "                   --key certs/out/server-key.pem \\"
+    echo "                   --ca certs/out/ca-cert.pem"
+    echo ""
+    echo "Auto-renewal: certbot will auto-update $CERT_PATH/ (copy to certs/out manually after renewal)"
 else
     echo "❌ Certificate setup failed"
     exit 1
