@@ -47,13 +47,22 @@ sudo certbot certonly \
   --preferred-challenges dns \
   --agree-tos \
   -m mahesh.vaidya.aitools@gmail.com \
-  -d "$DOMAIN"
+  -d "$DOMAIN" \
+  || echo "⚠️  Certbot message (cert may already exist, continuing...)"
 
 echo ""
 echo "Checking for certificate..."
 sleep 2  # Give certbot time to finalize
 
-if [ -f "$CERT_PATH/fullchain.pem" ] && [ -f "$CERT_PATH/privkey.pem" ]; then
+echo "Looking for: $CERT_PATH/fullchain.pem"
+echo "Looking for: $CERT_PATH/privkey.pem"
+
+# Check with sudo if regular user can't read
+if ! [ -f "$CERT_PATH/fullchain.pem" ]; then
+    sudo ls -la "$CERT_PATH/fullchain.pem" 2>/dev/null || echo "Cert file not found"
+fi
+
+if sudo test -f "$CERT_PATH/fullchain.pem" 2>/dev/null && sudo test -f "$CERT_PATH/privkey.pem" 2>/dev/null; then
     echo "✅ Certificate found:"
     echo "  Cert: $CERT_PATH/fullchain.pem"
     echo "  Key:  $CERT_PATH/privkey.pem"
@@ -64,15 +73,19 @@ if [ -f "$CERT_PATH/fullchain.pem" ] && [ -f "$CERT_PATH/privkey.pem" ]; then
     mkdir -p "$OUT_DIR"
 
     echo "Copying to local certs/out/ with standard names..."
-    sudo cp "$CERT_PATH/fullchain.pem" "$OUT_DIR/server-cert.pem" 2>/dev/null || {
-        echo "Using sudo for copy..."
-        sudo sh -c "cp $CERT_PATH/fullchain.pem $OUT_DIR/server-cert.pem"
+
+    sudo cp -v "$CERT_PATH/fullchain.pem" "$OUT_DIR/server-cert.pem" && echo "✓ Cert copied" || {
+        echo "✗ Cert copy failed, trying alternate method..."
+        sudo sh -c "cat $CERT_PATH/fullchain.pem > $OUT_DIR/server-cert.pem"
     }
-    sudo cp "$CERT_PATH/privkey.pem" "$OUT_DIR/server-key.pem" 2>/dev/null || {
-        echo "Using sudo for key copy..."
-        sudo sh -c "cp $CERT_PATH/privkey.pem $OUT_DIR/server-key.pem"
+
+    sudo cp -v "$CERT_PATH/privkey.pem" "$OUT_DIR/server-key.pem" && echo "✓ Key copied" || {
+        echo "✗ Key copy failed, trying alternate method..."
+        sudo sh -c "cat $CERT_PATH/privkey.pem > $OUT_DIR/server-key.pem"
     }
-    sudo chown $USER:$USER "$OUT_DIR/server-cert.pem" "$OUT_DIR/server-key.pem" 2>/dev/null || true
+
+    echo "Setting permissions..."
+    sudo chown $USER:$USER "$OUT_DIR/server-cert.pem" "$OUT_DIR/server-key.pem" && echo "✓ Permissions set" || true
 
     # Verify files exist
     if [ -f "$OUT_DIR/server-cert.pem" ] && [ -f "$OUT_DIR/server-key.pem" ]; then
