@@ -89,6 +89,6 @@ if __name__ == "__main__":
             ssl_keyfile=args.key,
             ssl_certfile=args.cert,
             ssl_ca_certs=args.ca,
-            ssl_cert_reqs="required",
+            ssl_cert_reqs=ssl.CERT_REQUIRED,
             log_level="info"
         )
