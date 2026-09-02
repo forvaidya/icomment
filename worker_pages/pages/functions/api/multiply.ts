@@ -6,9 +6,9 @@ interface Env {
   };
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ request, context }: { request: Request; context: any }) => {
+export const onRequestGet: PagesFunction = async ({ request }: { request: Request }) => {
   const url = new URL(request.url);
-  const response = await context.env.LAPTOP_BACKEND_MTLS.fetch(
+  const response = await fetch(
     `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
   );
 
