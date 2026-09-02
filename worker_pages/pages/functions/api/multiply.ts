@@ -1,8 +1,14 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 
-export const onRequestGet: PagesFunction = async ({ request }: { request: Request }) => {
+interface Env {
+  LAPTOP_BACKEND_MTLS: {
+    fetch(request: Request | string, init?: any): Promise<Response>;
+  };
+}
+
+export const onRequestGet: PagesFunction<Env> = async ({ request, context }: { request: Request; context: any }) => {
   const url = new URL(request.url);
-  const response = await fetch(
+  const response = await context.env.LAPTOP_BACKEND_MTLS.fetch(
     `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
   );
 
