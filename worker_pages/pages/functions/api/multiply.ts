@@ -3,7 +3,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 export const onRequestGet: PagesFunction = async ({ request }: { request: Request }) => {
   const url = new URL(request.url);
   const response = await fetch(
-    `http://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
+    `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
   );
 
   return new Response(await response.text(), {
