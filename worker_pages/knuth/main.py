@@ -89,6 +89,6 @@ if __name__ == "__main__":
             ssl_keyfile=args.key,
             ssl_certfile=args.cert,
             ssl_ca_certs=args.ca,
-            ssl_cert_reqs=ssl.CERT_NONE,  # HTTPS only (no mTLS requirement for Cloudflare compatibility)
+            ssl_cert_reqs=ssl.CERT_REQUIRED,  # mTLS: client certs REQUIRED
             log_level="info"
         )
