@@ -1,14 +1,4 @@
-# Private business Worker — no public HTTP route
-# See ARCHITECTURE.md for the public Pages + private Worker pattern
-# @see https://developers.cloudflare.com/workers/configuration/routing/routes/
-# @see https://developers.cloudflare.com/workers/runtime-apis/web-crypto/service-bindings/
-
 name = "aspire-math"
 main = "src/index.ts"
 compatibility_date = "2026-08-30"
-
-# workers_dev = false disables the public workers.dev hostname
-# This Worker has no public route or custom domain.
-# It is reachable only through a Service Binding from the Pages BFF.
-# @see https://developers.cloudflare.com/workers/configuration/compatibility-dates/
 workers_dev = false

@@ -28,6 +28,11 @@ private.key
 *.csr
 worker_pages/knuth/certs/out/
 
+# Private keys, certificates, secrets
+NO-COMMIT/
+private.key
+*.pem
+
 # Wrangler
 .wrangler/
 wrangler.json
