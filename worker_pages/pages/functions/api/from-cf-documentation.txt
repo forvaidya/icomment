@@ -1,10 +1,12 @@
-import type { Fetcher, PagesFunction } from '@cloudflare/workers-types';
+import type { PagesFunction } from '@cloudflare/workers-types';
 
 interface Env {
-  LAPTOP_BACKEND_MTLS: Fetcher;
+  LAPTOP_BACKEND_MTLS: {
+    fetch(request: Request | string, init?: any): Promise<Response>;
+  };
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestGet: PagesFunction<Env> = async ({ request, env }: { request: Request; env: Env }) => {
   const url = new URL(request.url);
   const response = await env.LAPTOP_BACKEND_MTLS.fetch(
     `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
