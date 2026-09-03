@@ -195,7 +195,7 @@ certificate_id = "56964753-03ed-4f3e-89b3-89873425d0ed"
 
 ### Step 4: Deploy to Cloudflare Pages
 ```bash
-wrangler pages deploy --project-name aspire-pages
+npm run deploy  # Production URL: https://aspire-pages.pages.dev/
 ```
 
 ### Step 5: Use Binding in Pages Function
@@ -244,7 +244,7 @@ const response = await env.KNUTH_MTLS.fetch(
 **Build**:
 ```bash
 cd worker_pages/pages
-wrangler pages deploy --project-name aspire-pages
+npm run deploy  # Production URL: https://aspire-pages.pages.dev/
 ```
 
 **Server** (AWS):
