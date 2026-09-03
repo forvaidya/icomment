@@ -15,15 +15,16 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       status: response.status,
       headers: { 'Content-Type': 'application/json' }
     });
-  } catch (error) {
-    console.error('mTLS origin request failed', error);
-
-    return Response.json(
-      {
-        error: 'mTLS origin request failed',
-        bindingExists: Boolean(env.LAPTOP_BACKEND_MTLS)
-      },
-      { status: 502 }
-    );
+  } catch (err: any) {
+    return new Response(JSON.stringify({
+      error: err.message,
+      name: err.name,
+      stack: err.stack,
+      bindingExists: !!env.LAPTOP_BACKEND_MTLS,
+      bindingType: typeof env.LAPTOP_BACKEND_MTLS
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 };
