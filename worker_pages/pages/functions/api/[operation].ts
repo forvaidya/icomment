@@ -6,10 +6,12 @@ interface Env {
   ASPIRE_MATH: Fetcher;
 }
 
-export const onRequestGet = async ({ request, env }: { request: Request; env: Env }) => {
+export const onRequestGet = async ({ request, env, params }: { request: Request; env: Env; params: { operation: string } }) => {
   const url = new URL(request.url);
+  const operation = params.operation;
+
   const response = await env.ASPIRE_MATH.fetch(
-    `https://aspire-math/multiply?${url.searchParams.toString()}`
+    `https://aspire-math/${operation}?${url.searchParams.toString()}`
   );
 
   return new Response(response.body, {
