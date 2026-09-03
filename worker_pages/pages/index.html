@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="version" content="5f14be0">
   <title>Aspire System</title>
   <style>
     body {
@@ -73,52 +74,122 @@
     .result {
       color: #087443;
     }
+
+    .section {
+      margin-bottom: 2rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid #dce3ee;
+    }
+
+    .section:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .section-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+    }
+
+    .add .section-title {
+      color: #1769aa;
+    }
+
+    .multiply .section-title {
+      color: #b42318;
+    }
+
+    .red-marker {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #b42318;
+      border-radius: 50%;
+      margin-right: 0.5rem;
+    }
+
+    footer {
+      position: fixed;
+      bottom: 0.5rem;
+      right: 0.5rem;
+      font-size: 0.75rem;
+      color: #aebbd0;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>Welcome to Aspire System</h1>
-    <form class="calculator" id="calculator-form">
-      <input id="first-number" name="a" type="text" inputmode="decimal" aria-label="First number">
-      <span>+</span>
-      <input id="second-number" name="b" type="text" inputmode="decimal" aria-label="Second number">
-      <button type="submit">Add</button>
-      <button type="button" id="clear-button">Clear</button>
-    </form>
-    <p id="message" role="status" aria-live="polite"></p>
+
+    <div class="section add">
+      <div class="section-title">Add Operation</div>
+      <form class="calculator" id="add-form">
+        <input id="add-first" name="a" type="text" inputmode="decimal" aria-label="First number">
+        <span>+</span>
+        <input id="add-second" name="b" type="text" inputmode="decimal" aria-label="Second number">
+        <button type="submit">Add</button>
+        <button type="button" class="clear-btn">Clear</button>
+      </form>
+      <p id="add-message" role="status" aria-live="polite"></p>
+    </div>
+
+    <div class="section multiply">
+      <div class="section-title"><span class="red-marker"></span>Multiply Operation</div>
+      <form class="calculator" id="multiply-form">
+        <input id="multiply-first" name="a" type="text" inputmode="decimal" aria-label="First number">
+        <span>×</span>
+        <input id="multiply-second" name="b" type="text" inputmode="decimal" aria-label="Second number">
+        <button type="submit">Multiply</button>
+        <button type="button" class="clear-btn">Clear</button>
+      </form>
+      <p id="multiply-message" role="status" aria-live="polite"></p>
+    </div>
   </main>
   <script>
-    const form = document.querySelector('#calculator-form');
-    const firstNumber = document.querySelector('#first-number');
-    const secondNumber = document.querySelector('#second-number');
-    const message = document.querySelector('#message');
-    const clearButton = document.querySelector('#clear-button');
+    function initCalculator(formId, endpoint) {
+      const form = document.querySelector(`#${formId}`);
+      const firstInput = form.querySelector('input[name="a"]');
+      const secondInput = form.querySelector('input[name="b"]');
+      const messageEl = form.parentElement.querySelector('[role="status"]');
+      const clearBtns = form.querySelectorAll('.clear-btn');
 
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      message.className = '';
-      message.textContent = 'Calculating...';
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        messageEl.className = '';
+        messageEl.textContent = 'Calculating...';
 
-      const params = new URLSearchParams({ a: firstNumber.value, b: secondNumber.value });
-      const response = await fetch(`/api/add?${params}`);
-      const data = await response.json();
+        const params = new URLSearchParams({ a: firstInput.value, b: secondInput.value });
+        const response = await fetch(`/api/${endpoint}?${params}`);
+        const data = await response.json();
 
-      if (!response.ok) {
-        message.className = 'error';
-        message.textContent = data.error || 'Unable to add values';
-        return;
-      }
+        if (!response.ok) {
+          messageEl.className = 'error';
+          messageEl.textContent = data.error || 'Unable to calculate';
+          return;
+        }
 
-      message.className = 'result';
-      message.textContent = `Result: ${data.result}`;
-    });
+        messageEl.className = 'result';
+        messageEl.textContent = `Result: ${data.result}`;
+      });
 
-    clearButton.addEventListener('click', () => {
-      form.reset();
-      message.className = '';
-      message.textContent = '';
-      firstNumber.focus();
-    });
+      clearBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          form.reset();
+          messageEl.className = '';
+          messageEl.textContent = '';
+          firstInput.focus();
+        });
+      });
+    }
+
+    initCalculator('add-form', 'add');
+    initCalculator('multiply-form', 'multiply');
   </script>
+  <footer>v:5f14be0</footer>
 </body>
 </html>
