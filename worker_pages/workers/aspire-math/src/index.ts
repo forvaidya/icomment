@@ -11,18 +11,70 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/multiply') {
+      const requestId = crypto.randomUUID();
+      const startedAt = Date.now();
+      const firstParameter = url.searchParams.get('a');
+      const secondParameter = url.searchParams.get('b');
+
+      console.log(JSON.stringify({
+        event: 'multiply.request.received',
+        requestId,
+        method: request.method,
+        path: url.pathname,
+        hasA: firstParameter !== null,
+        hasB: secondParameter !== null,
+        userAgent: request.headers.get('User-Agent'),
+        cfRay: request.headers.get('CF-Ray')
+      }));
+
+      if (firstParameter === null || secondParameter === null) {
+        console.warn(JSON.stringify({
+          event: 'multiply.request.invalid',
+          requestId,
+          reason: 'missing query parameter',
+          durationMs: Date.now() - startedAt
+        }));
+      }
+
       try {
+        console.log(JSON.stringify({
+          event: 'multiply.upstream.request',
+          requestId,
+          origin: 'knuth.awanipro.com:9000',
+          tls: true,
+          mtlsBinding: 'LAPTOP_BACKEND_MTLS'
+        }));
+
         const response = await env.LAPTOP_BACKEND_MTLS.fetch(
           `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
         );
+
+        console.log(JSON.stringify({
+          event: 'multiply.upstream.response',
+          requestId,
+          status: response.status,
+          contentType: response.headers.get('Content-Type'),
+          durationMs: Date.now() - startedAt
+        }));
 
         return new Response(response.body, {
           status: response.status,
           headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' }
         });
       } catch (error) {
+        console.error(JSON.stringify({
+          event: 'multiply.upstream.error',
+          requestId,
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+          errorMessage: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - startedAt
+        }));
+
         return Response.json(
-          { error: error instanceof Error ? error.message : 'Upstream request failed' },
+          {
+            error: 'Upstream request failed',
+            requestId
+          },
           { status: 502 }
         );
       }
