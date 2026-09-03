@@ -6,7 +6,7 @@
 
 A dual-calculator Cloudflare Pages application demonstrating:
 1. **Service Binding** (Add) — Pages Function → private ASPIRE_MATH Worker
-2. **External AWS Backend** (Multiply) — Pages Function → AWS EC2 server
+2. **External AWS Backend** (Multiply) — aspire-math Worker → AWS EC2 server
 3. **Visual Distinction** — Red marker on Multiply section
 4. **mTLS Infrastructure** — Prepared for future TLS upgrade
 
@@ -22,10 +22,10 @@ Cloudflare Pages (aspire-pages.pages.dev)
   │    ↓ (internal, no TLS)
   │    → Result: 3 + 4 = 7
   │
-  └─→ /api/multiply (plain HTTP, test mode)
+  └─→ /multiply on aspire-math (mTLS)
        ↓
        AWS EC2 (knuth.awanipro.com:9000)
-       ↓ (FastAPI, plain HTTP)
+      ↓ (FastAPI, HTTPS + mTLS)
        → Result: 4 × 4 = 16
 ```
 
@@ -50,14 +50,13 @@ env.ASPIRE_MATH.fetch('https://aspire-math/add?...')
 - Service Binding to private Worker
 - Mirrored to `aspire-math` worker's `/add` endpoint
 
-### Multiply (`/api/multiply`)
+### Multiply (`/multiply` on `aspire-math`)
 ```typescript
-// pages/functions/api/multiply.ts
-fetch('http://knuth.awanipro.com:9000/multiply?...')
+// workers/aspire-math/src/index.ts
+env.LAPTOP_BACKEND_MTLS.fetch('https://knuth.awanipro.com:9000/multiply?...')
 ```
-- Direct HTTP fetch to AWS server (test mode)
+- mTLS Fetcher binding to AWS server
 - Calls FastAPI `/multiply` endpoint
-- Ready to upgrade to mTLS with `env.LAPTOP_BACKEND_MTLS` binding
 
 ## Backend (AWS EC2)
 
@@ -90,10 +89,10 @@ if __name__ == "__main__":
 |-----------|------|----------|--------|
 | Pages | Cloudflare Pages | `aspire-pages` | ✅ Deployed |
 | Add endpoint | Worker | Private (aspire-math) | ✅ Service Binding |
-| Multiply endpoint | AWS EC2 | `knuth.awanipro.com:9000` | ✅ Plain HTTP |
+| Multiply endpoint | Worker → AWS EC2 | `knuth.awanipro.com:9000` | ✅ mTLS |
 | DNS | Cloudflare DNS | `knuth.awanipro.com` → `15.206.133.75` | ✅ Proxy: OFF |
-| Certificates | Self-signed (unused for now) | S3 bucket | 📦 Ready |
-| mTLS Binding | Cloudflare Workers | `LAPTOP_BACKEND_MTLS` | 🔧 Configured, unused |
+| Certificates | Client certificate | Cloudflare mTLS | ✅ Available |
+| mTLS Binding | `aspire-math` Worker | `LAPTOP_BACKEND_MTLS` | ✅ Configured |
 
 ## Certificates (Archived)
 
@@ -102,7 +101,7 @@ if __name__ == "__main__":
 **Generated**: `knuth/certs/generate-certs.sh`
 - CA: `knuth-ca` (self-signed, 10-year validity)
 - Server: `knuth.awanipro.com` (CN + SAN for both hostname and IP)
-- Client: `cloudflare-worker-client` (for Pages Function mTLS)
+- Client: `cloudflare-worker-client` (for `aspire-math` Worker mTLS)
 
 **Upload to Cloudflare** (one-time):
 ```bash
@@ -120,14 +119,14 @@ Issuer: CN=knuth-ca
 Expires on 8/30/2027
 ```
 
-**Configure in wrangler.toml** (`pages/wrangler.toml`):
+**Configure in wrangler.toml** (`workers/aspire-math/wrangler.toml`):
 ```toml
 [[mtls_certificates]]
 binding = "KNUTH_MTLS"
 certificate_id = "56964753-03ed-4f3e-89b3-89873425d0ed"
 ```
 
-**Use in Pages Function** (when HTTPS is enabled):
+**Use in Worker**:
 ```typescript
 const response = await env.KNUTH_MTLS.fetch(
   'https://knuth.awanipro.com:9000/multiply?a=5&b=6'
