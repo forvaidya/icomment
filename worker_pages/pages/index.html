@@ -164,17 +164,29 @@
         messageEl.textContent = 'Calculating...';
 
         const params = new URLSearchParams({ a: firstInput.value, b: secondInput.value });
-        const response = await fetch(`/api/${endpoint}?${params}`);
-        const data = await response.json();
+        try {
+          const response = await fetch(`/api/${endpoint}?${params}`);
+          const body = await response.text();
+          let data = {};
 
-        if (!response.ok) {
+          try {
+            data = JSON.parse(body);
+          } catch {
+            data.error = body.trim();
+          }
+
+          if (!response.ok) {
+            messageEl.className = 'error';
+            messageEl.textContent = data.error || `Unable to calculate (${response.status})`;
+            return;
+          }
+
+          messageEl.className = 'result';
+          messageEl.textContent = `Result: ${data.result}`;
+        } catch {
           messageEl.className = 'error';
-          messageEl.textContent = data.error || 'Unable to calculate';
-          return;
+          messageEl.textContent = 'Unable to reach the calculation service';
         }
-
-        messageEl.className = 'result';
-        messageEl.textContent = `Result: ${data.result}`;
       });
 
       clearBtns.forEach(btn => {
