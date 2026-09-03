@@ -37,46 +37,36 @@ export default {
       }
 
       try {
-        console.log(JSON.stringify({
-          event: 'multiply.upstream.request',
-          requestId,
-          origin: 'knuth.awanipro.com:9000',
-          tls: true,
-          mtlsBinding: 'LAPTOP_BACKEND_MTLS'
-        }));
-
         const response = await env.LAPTOP_BACKEND_MTLS.fetch(
           `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
         );
+
+        if (!response.ok) {
+          console.warn(JSON.stringify({
+            event: 'multiply.upstream.error',
+            requestId,
+            status: response.status,
+            durationMs: Date.now() - startedAt
+          }));
+          return new Response(`Backend error: ${response.status}`, { status: 502 });
+        }
 
         console.log(JSON.stringify({
           event: 'multiply.upstream.response',
           requestId,
           status: response.status,
-          contentType: response.headers.get('Content-Type'),
           durationMs: Date.now() - startedAt
         }));
 
-        return new Response(response.body, {
-          status: response.status,
-          headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' }
-        });
-      } catch (error) {
+        return new Response(response.body, response);
+      } catch (e) {
         console.error(JSON.stringify({
           event: 'multiply.upstream.error',
           requestId,
-          errorName: error instanceof Error ? error.name : 'UnknownError',
-          errorMessage: error instanceof Error ? error.message : String(error),
+          error: e instanceof Error ? e.message : String(e),
           durationMs: Date.now() - startedAt
         }));
-
-        return Response.json(
-          {
-            error: 'Upstream request failed',
-            requestId
-          },
-          { status: 502 }
-        );
+        return new Response(`mTLS fetch failed: ${e instanceof Error ? e.message : String(e)}`, { status: 502 });
       }
     }
 
