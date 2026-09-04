@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# Global CRL cache
-crl_cache = None
+# CRL path (set at startup)
 crl_path = None
 
 def load_crl(path):
@@ -34,11 +33,8 @@ def load_crl(path):
 @app.middleware("http")
 async def check_crl(request: Request, call_next):
     """Check if client cert is in CRL before processing request."""
-    global crl_cache
-
-    if crl_cache is None:
-        # Reload CRL from disk on each request (detects file changes without restart)
-        crl_cache = load_crl(crl_path)
+    # Reload CRL from disk on each request (detects file changes without restart)
+    revoked_serials = load_crl(crl_path)
 
     # Extract client cert serial from SSL context
     ssl_object = request.scope.get("ssl")
@@ -47,7 +43,7 @@ async def check_crl(request: Request, call_next):
             peer_cert = ssl_object.getpeercert(binary_form=True)
             if peer_cert:
                 cert = x509.load_der_x509_certificate(peer_cert, default_backend())
-                if crl_cache and cert.serial_number in crl_cache:
+                if revoked_serials and cert.serial_number in revoked_serials:
                     logger.warning(f"Rejected: cert {cert.serial_number:x} is revoked")
                     return JSONResponse(
                         {"error": "Client certificate revoked"},
