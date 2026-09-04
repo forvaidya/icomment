@@ -32,15 +32,17 @@ function loadCRL(crlPath) {
     const lines = crlText.split('\n');
     console.log(`[loadCRL] split into ${lines.length} lines`);
 
+    console.log(`[loadCRL] all lines:`, lines);
+
     lines.forEach((line, i) => {
       if (line.includes('Serial Number')) {
-        console.log(`[loadCRL] found serial line: "${line}"`);
+        console.log(`[loadCRL] line ${i} has Serial: "${line}"`);
         const match = line.match(/\s*Serial Number:\s*([0-9A-Fa-f]+)/);
         if (match) {
-          console.log(`[loadCRL] matched serial: ${match[1]}`);
+          console.log(`[loadCRL] MATCHED: ${match[1]}`);
           serials.add(match[1].toUpperCase());
         } else {
-          console.log(`[loadCRL] NO MATCH for line`);
+          console.log(`[loadCRL] NO REGEX MATCH`);
         }
       }
     });
