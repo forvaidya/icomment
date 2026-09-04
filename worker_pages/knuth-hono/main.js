@@ -28,7 +28,7 @@ function loadCRL(crlPath) {
 
     const lines = crlText.split('\n');
     lines.forEach(line => {
-      const match = line.match(/Serial Number:\s*([0-9A-Fa-f]+)/);
+      const match = line.match(/\s*Serial Number:\s*([0-9A-Fa-f]+)/);
       if (match) {
         serials.add(match[1].toUpperCase());
       }
