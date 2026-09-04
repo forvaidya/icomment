@@ -19,36 +19,40 @@ def load_crl(path):
     """Load CRL from disk."""
     if not os.path.exists(path):
         logger.warning(f"CRL not found at {path}")
-        return None
+        return set()
     try:
         with open(path, 'rb') as f:
             crl = x509.load_pem_x509_crl(f.read(), default_backend())
-        revoked_serials = {cert.serial_number for cert in crl}
-        logger.info(f"Loaded CRL with {len(revoked_serials)} revoked certs")
-        return revoked_serials
+        serials = {cert.serial_number for cert in crl}
+        logger.info(f"Loaded CRL with {len(serials)} revoked certs")
+        return serials
     except Exception as e:
         logger.error(f"Failed to load CRL: {e}")
-        return None
+        return set()
 
 @app.middleware("http")
-async def check_crl(request: Request, call_next):
+async def check_crl_middleware(request: Request, call_next):
     """Check if client cert is in CRL before processing request."""
-    # Reload CRL from disk on each request (detects file changes without restart)
-    revoked_serials = load_crl(crl_path)
+    # Get client certificate from connection
+    connection = request.scope.get("client")
+    transport = request.scope.get("transport")
 
-    # Extract client cert serial from SSL context
-    ssl_object = request.scope.get("ssl")
-    if ssl_object and hasattr(ssl_object, 'getpeercert'):
+    if transport and hasattr(transport, "get_extra_info"):
         try:
-            peer_cert = ssl_object.getpeercert(binary_form=True)
-            if peer_cert:
-                cert = x509.load_der_x509_certificate(peer_cert, default_backend())
-                if revoked_serials and cert.serial_number in revoked_serials:
-                    logger.warning(f"Rejected: cert {cert.serial_number:x} is revoked")
-                    return JSONResponse(
-                        {"error": "Client certificate revoked"},
-                        status_code=403
-                    )
+            # Get the SSL object from transport
+            ssl_obj = transport.get_extra_info("ssl_object")
+            if ssl_obj:
+                # Get peer certificate in DER format
+                peer_cert_der = ssl_obj.getpeercert(binary_form=True)
+                if peer_cert_der:
+                    cert = x509.load_der_x509_certificate(peer_cert_der, default_backend())
+                    revoked = load_crl(crl_path)
+                    if cert.serial_number in revoked:
+                        logger.warning(f"Rejected: cert {cert.serial_number:x} is revoked")
+                        return JSONResponse(
+                            {"error": "Client certificate revoked"},
+                            status_code=403
+                        )
         except Exception as e:
             logger.error(f"Error checking CRL: {e}")
 
@@ -121,25 +125,25 @@ if __name__ == "__main__":
         print("\n" + "="*60)
         print("✅ MTLS ENABLED (mTLS + CRL check)")
         print("="*60)
-        print("Server running with mutual TLS (client cert verification required)")
+        print("Server running with mutual TLS (client cert verification + CRL required)")
         print(f"Certificate: {args.cert}")
         print(f"Private Key: {args.key}")
         print(f"CA Cert:     {args.ca}")
         print(f"CRL File:    {args.crl}")
-        print("\nClients MUST present valid certificate signed by CA:")
+        print("\nClients MUST present valid certificate (not in CRL):")
         print("  curl --cert certs/out/client-cert.pem \\")
         print("       --key certs/out/client-key.pem \\")
         print("       --cacert certs/out/ca-cert.pem \\")
         print("       https://localhost:9000/multiply?a=3&b=4")
-        print("\nWithout client cert, connection will be rejected.")
-        print("To test CRL revocation:")
+        print("\nTo test CRL revocation:")
         print("  1. cp certs/out/crl-revoked.pem certs/out/crl.pem")
-        print("  2. Requests will get 403: Client certificate revoked")
+        print("  2. Next request will be rejected at TLS handshake")
         print("  3. cp certs/out/crl-empty.pem certs/out/crl.pem")
         print("  4. Requests will succeed again (no restart needed!)")
         print("To run in test mode (plain HTTP): python3 main.py --no-mtls")
         print("="*60 + "\n")
 
+        crl_path = args.crl
         uvicorn.run(
             app,
             host="0.0.0.0",
@@ -147,6 +151,6 @@ if __name__ == "__main__":
             ssl_keyfile=args.key,
             ssl_certfile=args.cert,
             ssl_ca_certs=args.ca,
-            ssl_cert_reqs=ssl.CERT_REQUIRED,  # mTLS: client certs REQUIRED
+            ssl_cert_reqs=ssl.CERT_REQUIRED,
             log_level="info"
         )
