@@ -255,7 +255,15 @@ cp certs/out/crl-revoked.pem certs/out/crl.pem
 - Python ASGI middleware: No access to client certificate
 - Node.js https.Server: Direct access via `socket.getPeerCertificate()`
 
-**Solution:** Node.js reverse proxy (Hono) handles:
+**Solution:** Use a reverse proxy at TLS layer. Options:
+- **Hono** (chosen) — Node.js, lightweight, CRL checking at app level
+- **nginx** — Battle-tested, `ssl_crl` directive, production-ready
+- **AWS ALB** — Native mTLS + certificate validation
+- **Traefik** — Kubernetes-friendly, built-in middleware support
+
+We chose **Hono arbitrarily**. Any reverse proxy with CRL support works.
+
+**Hono implementation:**
 - Incoming mTLS + certificate validation
 - CRL lookup and revocation check
 - Proxies to backend only if cert valid
