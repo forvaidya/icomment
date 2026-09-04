@@ -17,6 +17,8 @@ console.log('  CRL file:', crlFile, fs.existsSync(crlFile) ? '✓' : '✗');
 
 // Load CRL and extract revoked serials
 function loadCRL(crlPath) {
+  console.log(`[loadCRL] called with path=${crlPath}`);
+
   if (!fs.existsSync(crlPath)) {
     console.warn('CRL not found:', crlPath);
     return new Set();
@@ -24,31 +26,29 @@ function loadCRL(crlPath) {
 
   try {
     const crlText = fs.readFileSync(crlPath, 'utf8');
-    const serials = new Set();
+    console.log(`[loadCRL] read ${crlText.length} bytes`);
 
+    const serials = new Set();
     const lines = crlText.split('\n');
-    console.log(`DEBUG loadCRL: total lines=${lines.length}`);
+    console.log(`[loadCRL] split into ${lines.length} lines`);
 
     lines.forEach((line, i) => {
       if (line.includes('Serial Number')) {
-        console.log(`DEBUG: line ${i}="${line}"`);
+        console.log(`[loadCRL] found serial line: "${line}"`);
         const match = line.match(/\s*Serial Number:\s*([0-9A-Fa-f]+)/);
-        console.log(`DEBUG: match=${match}`);
         if (match) {
-          console.log(`DEBUG: adding serial=${match[1]}`);
+          console.log(`[loadCRL] matched serial: ${match[1]}`);
           serials.add(match[1].toUpperCase());
+        } else {
+          console.log(`[loadCRL] NO MATCH for line`);
         }
       }
     });
 
-    if (serials.size > 0) {
-      console.log(`Loaded CRL with ${serials.size} revoked certs:`, Array.from(serials));
-    } else {
-      console.log('Loaded CRL with 0 revoked certs');
-    }
+    console.log(`[loadCRL] final: ${serials.size} revoked certs`);
     return serials;
   } catch (e) {
-    console.error('Failed to load CRL:', e.message);
+    console.error('[loadCRL] error:', e.message);
     return new Set();
   }
 }
