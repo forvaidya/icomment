@@ -1,10 +1,62 @@
 import ssl
 import os
 import argparse
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
+
+# Global CRL cache
+crl_cache = None
+crl_path = None
+
+def load_crl(path):
+    """Load CRL from disk."""
+    if not os.path.exists(path):
+        logger.warning(f"CRL not found at {path}")
+        return None
+    try:
+        with open(path, 'rb') as f:
+            crl = x509.load_pem_x509_crl(f.read(), default_backend())
+        revoked_serials = {cert.serial_number for cert in crl}
+        logger.info(f"Loaded CRL with {len(revoked_serials)} revoked certs")
+        return revoked_serials
+    except Exception as e:
+        logger.error(f"Failed to load CRL: {e}")
+        return None
+
+@app.middleware("http")
+async def check_crl(request: Request, call_next):
+    """Check if client cert is in CRL before processing request."""
+    global crl_cache
+
+    if crl_cache is None:
+        # Reload CRL from disk on each request (detects file changes without restart)
+        crl_cache = load_crl(crl_path)
+
+    # Extract client cert serial from SSL context
+    ssl_object = request.scope.get("ssl")
+    if ssl_object and hasattr(ssl_object, 'getpeercert'):
+        try:
+            peer_cert = ssl_object.getpeercert(binary_form=True)
+            if peer_cert:
+                cert = x509.load_der_x509_certificate(peer_cert, default_backend())
+                if crl_cache and cert.serial_number in crl_cache:
+                    logger.warning(f"Rejected: cert {cert.serial_number:x} is revoked")
+                    return JSONResponse(
+                        {"error": "Client certificate revoked"},
+                        status_code=403
+                    )
+        except Exception as e:
+            logger.error(f"Error checking CRL: {e}")
+
+    return await call_next(request)
 
 
 @app.get("/multiply")
@@ -27,7 +79,11 @@ if __name__ == "__main__":
     parser.add_argument("--cert", type=str, default="certs/out/server-cert.pem", help="Path to SSL certificate")
     parser.add_argument("--key", type=str, default="certs/out/server-key.pem", help="Path to SSL private key")
     parser.add_argument("--ca", type=str, default="certs/out/ca-cert.pem", help="Path to CA cert for client verification")
+    parser.add_argument("--crl", type=str, default="certs/out/crl.pem", help="Path to CRL file (optional)")
     args = parser.parse_args()
+
+    # Set global CRL path
+    crl_path = args.crl
 
     if args.no_mtls:
         # Test mode: plain HTTP
@@ -67,18 +123,24 @@ if __name__ == "__main__":
             exit(1)
 
         print("\n" + "="*60)
-        print("✅ MTLS ENABLED (mTLS required)")
+        print("✅ MTLS ENABLED (mTLS + CRL check)")
         print("="*60)
         print("Server running with mutual TLS (client cert verification required)")
         print(f"Certificate: {args.cert}")
         print(f"Private Key: {args.key}")
         print(f"CA Cert:     {args.ca}")
+        print(f"CRL File:    {args.crl}")
         print("\nClients MUST present valid certificate signed by CA:")
         print("  curl --cert certs/out/client-cert.pem \\")
         print("       --key certs/out/client-key.pem \\")
         print("       --cacert certs/out/ca-cert.pem \\")
         print("       https://localhost:9000/multiply?a=3&b=4")
         print("\nWithout client cert, connection will be rejected.")
+        print("To test CRL revocation:")
+        print("  1. cp certs/out/crl-revoked.pem certs/out/crl.pem")
+        print("  2. Requests will get 403: Client certificate revoked")
+        print("  3. cp certs/out/crl-empty.pem certs/out/crl.pem")
+        print("  4. Requests will succeed again (no restart needed!)")
         print("To run in test mode (plain HTTP): python3 main.py --no-mtls")
         print("="*60 + "\n")
 
