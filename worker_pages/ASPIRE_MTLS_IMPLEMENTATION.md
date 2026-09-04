@@ -136,8 +136,8 @@ Aspire now has end-to-end authenticated communication:
 
 ## Related Documentation
 
-- **[System Architecture](./ARCHITECTURE.md)** — Pages, Worker, and backend topology
-- **[Architecture (Beginner)](./ARCHITECTURE_BEGINNER.md)** — Simple overview of the system design
-- **[Fetcher Interface](./FETCHER_EXPLAINED.md)** — How Pages and Workers communicate
-- **[mTLS Binding Setup](./MTLS_BINDING_SETUP.md)** — Configuration details
-- **[Multiply Feature](./MULTIPLY_FEATURE_COMPLETE.md)** — mTLS multiply endpoint implementation
+- **[System Architecture](ARCHITECTURE.md)** — Pages, Worker, and backend topology
+- **[Architecture (Beginner)](ARCHITECTURE_BEGINNER.md)** — Simple overview of the system design
+- **[Fetcher Interface](FETCHER_EXPLAINED.md)** — How Pages and Workers communicate
+- **[mTLS Binding Setup](MTLS_BINDING_SETUP.md)** — Configuration details
+- **[Multiply Feature](MULTIPLY_FEATURE_COMPLETE.md)** — mTLS multiply endpoint implementation
