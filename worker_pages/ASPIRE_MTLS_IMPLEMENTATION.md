@@ -247,6 +247,51 @@ EOF
 cp certs/out/crl-revoked.pem certs/out/crl.pem
 ```
 
+## 7. Reverse Proxy Pattern: Hono for CRL Checking
+
+### Why Hono?
+
+**Problem:** CRL checking must happen at TLS layer, not in HTTP frameworks.
+- Python ASGI middleware: No access to client certificate
+- Node.js https.Server: Direct access via `socket.getPeerCertificate()`
+
+**Solution:** Node.js reverse proxy (Hono) handles:
+- Incoming mTLS + certificate validation
+- CRL lookup and revocation check
+- Proxies to backend only if cert valid
+
+```
+Client (with cert)
+    ↓ HTTPS + CRL check
+Hono reverse proxy :9000 (Node.js)
+    ↓ Internal HTTP (no TLS)
+FastAPI backend :9001 (Python)
+```
+
+### Architecture Separation of Concerns
+
+| Role | Responsibility | Location |
+|------|---|---|
+| **Edge Worker Author** | Write business logic | Cloudflare Worker |
+| **API Administrator** | Manage certificates + CRL | Infrastructure (reverse proxy) |
+| **Backend Developer** | Implement endpoints | Python FastAPI |
+
+**Important:** Edge Worker author does NOT need to know about mTLS or CRL. That's infrastructure-level security, handled by API admin.
+
+### CRL Management (API Admin Only)
+
+Certificate revocation is an **infrastructure concern**, not application concern:
+
+```bash
+# API admin task:
+cp /path/to/crl-revoked.pem /path/to/crl.pem
+# Next request: certificate blocked, no restart needed
+```
+
+Worker doesn't care—it just calls the API. If cert is revoked, it gets 403.
+
+---
+
 ## 6. Summary: Result
 
 Aspire now has end-to-end authenticated communication:
