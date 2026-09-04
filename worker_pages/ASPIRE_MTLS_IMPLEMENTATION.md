@@ -124,6 +124,129 @@ mTLS failures are silent on the surface (network timeout, 502, empty reply). Alw
 - Test locally first (curl with cert)
 - Check Worker logs for upstream errors
 
+## 5b. Certificate Revocation: CRL Support
+
+### What is CRL?
+
+**Certificate Revocation List (CRL)** is a list of certificate serial numbers that have been revoked before expiry. When a certificate is compromised or no longer trusted, it's added to the CRL to prevent further use.
+
+Flow:
+```
+1. Client presents certificate during TLS handshake
+2. Server checks if cert serial is in CRL
+3. If revoked: reject connection
+4. If valid: allow connection
+```
+
+### Why CRL for Aspire?
+
+- **Compromise:** If client cert is leaked, revoke it immediately without waiting for expiry
+- **Rotation:** Decommission old certs without maintaining multiple CA hierarchies
+- **Emergency:** Block specific clients in real-time
+
+### Implementation: Where CRL Works
+
+**❌ NOT in FastAPI/Python application:**
+- HTTP middleware runs *after* TLS handshake
+- Framework has no access to raw certificate data
+- Same limitation applies to all HTTP frameworks (Hono, Express, etc.)
+
+**✅ Works at infrastructure level:**
+
+#### AWS ALB + WAF
+```
+Client cert → ALB TLS listener → ALB checks CRL → Accept/Reject
+```
+ALB native support for client certificate validation with CRL.
+
+#### Nginx Reverse Proxy
+```
+client cert → nginx → load_verify_file crl.pem → upstream
+```
+Nginx configuration:
+```nginx
+server {
+    listen 443 ssl;
+    ssl_certificate server-cert.pem;
+    ssl_certificate_key server-key.pem;
+    ssl_client_certificate ca-cert.pem;
+    ssl_crl crl.pem;  # ← CRL checking here
+    ssl_verify_client on;
+    
+    location / {
+        proxy_pass http://upstream:9000;
+    }
+}
+```
+
+#### AWS WAF + Mutual TLS
+WAF rules can inspect client certificates and block based on serial number.
+
+### Testing CRL Locally
+
+Use the standalone validation script (no framework needed):
+
+```bash
+cd worker_pages/knuth
+
+# Test with empty CRL (cert is valid)
+./validate-crl.sh certs/out/client-cert.pem certs/out/crl-empty.pem
+# ✅ VALID: Certificate ... NOT in CRL
+
+# Test with revoked CRL
+./validate-crl.sh certs/out/client-cert.pem certs/out/crl-revoked.pem
+# ❌ REVOKED: Certificate ... is in CRL
+```
+
+Scripts shows:
+- How to extract certificate serial number
+- How to check if serial exists in CRL
+- How revocation validation logic works
+
+### CRL Files in Repo
+
+```
+worker_pages/knuth/certs/out/
+├── crl.pem           # Active CRL (currently empty)
+├── crl-empty.pem     # Backup: no revocations
+├── crl-revoked.pem   # For testing: has cert revoked
+└── ca-cert.pem       # CA certificate (used by ALB/nginx)
+```
+
+### Deployment Path
+
+1. **Development:** Use `validate-crl.sh` to understand CRL logic
+2. **Staging:** Deploy nginx with CRL checking in front of EC2
+3. **Production:** Use ALB with native CRL support or WAF rules
+
+### Regenerating CRL
+
+When you need to revoke a new certificate:
+
+```bash
+cd worker_pages/knuth
+
+# Create new CRL with cert revoked
+# (requires cryptography library and CA private key)
+python3 << 'EOF'
+from cryptography import x509
+from cryptography.hazmat.backends import default_backend
+from datetime import datetime, timedelta
+
+# Load CA and cert to revoke
+with open('certs/out/ca-cert.pem', 'rb') as f:
+    ca_cert = x509.load_pem_x509_certificate(f.read(), default_backend())
+with open('certs/out/ca-key.pem', 'rb') as f:
+    ca_key = # Load private key...
+
+# Create revocation entry and sign new CRL
+# See crl-revoked.pem for structure
+EOF
+
+# Then copy to active:
+cp certs/out/crl-revoked.pem certs/out/crl.pem
+```
+
 ## 6. Summary: Result
 
 Aspire now has end-to-end authenticated communication:
