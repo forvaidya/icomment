@@ -1,6 +1,7 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Cert paths (hardcoded to reference Python version)
 const CERT_DIR = '../knuth/certs/out';
@@ -25,27 +26,26 @@ function loadCRL(crlPath) {
   }
 
   try {
-    const crlText = fs.readFileSync(crlPath, 'utf8');
-    console.log(`[loadCRL] read ${crlText.length} bytes`);
+    const crlPem = fs.readFileSync(crlPath, 'utf8');
+    console.log(`[loadCRL] read ${crlPem.length} bytes (PEM format)`);
+
+    // Decode PEM to text using openssl
+    const crlText = execSync('openssl crl -text -noout', { input: crlPem }).toString();
+    console.log(`[loadCRL] decoded CRL, searching for serials...`);
 
     const serials = new Set();
-    const lines = crlText.split('\n');
-    console.log(`[loadCRL] split into ${lines.length} lines`);
+    const matches = crlText.match(/Serial Number:\s*([0-9A-Fa-f]+)/g);
 
-    console.log(`[loadCRL] all lines:`, lines);
-
-    lines.forEach((line, i) => {
-      if (line.includes('Serial Number')) {
-        console.log(`[loadCRL] line ${i} has Serial: "${line}"`);
-        const match = line.match(/\s*Serial Number:\s*([0-9A-Fa-f]+)/);
+    if (matches) {
+      matches.forEach(line => {
+        const match = line.match(/Serial Number:\s*([0-9A-Fa-f]+)/);
         if (match) {
-          console.log(`[loadCRL] MATCHED: ${match[1]}`);
-          serials.add(match[1].toUpperCase());
-        } else {
-          console.log(`[loadCRL] NO REGEX MATCH`);
+          const serial = match[1].toUpperCase();
+          console.log(`[loadCRL] found revoked serial: ${serial}`);
+          serials.add(serial);
         }
-      }
-    });
+      });
+    }
 
     console.log(`[loadCRL] final: ${serials.size} revoked certs`);
     return serials;
