@@ -1,7 +1,10 @@
 # Created by venv; see https://docs.python.org/3/library/venv.html
 *
 
-# But track CRL and CA certs
+# But track scripts and certs
+!main.py
+!requirements.txt
+!validate-crl.sh
 !certs/
 !certs/out/
 !certs/out/ca-cert.pem
