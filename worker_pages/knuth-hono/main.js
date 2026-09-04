@@ -34,7 +34,11 @@ function loadCRL(crlPath) {
       }
     });
 
-    console.log(`Loaded CRL with ${serials.size} revoked certs`);
+    if (serials.size > 0) {
+      console.log(`Loaded CRL with ${serials.size} revoked certs:`, Array.from(serials));
+    } else {
+      console.log('Loaded CRL with 0 revoked certs');
+    }
     return serials;
   } catch (e) {
     console.error('Failed to load CRL:', e.message);
@@ -59,9 +63,24 @@ function requestHandler(req, res) {
   if (socket && socket.getPeerCertificate) {
     try {
       const cert = socket.getPeerCertificate();
-      serialNumber = cert.serialNumber?.toUpperCase();
+      console.log(`DEBUG: cert object=`, cert);
+      console.log(`DEBUG: cert.serialNumber=`, cert.serialNumber);
+      console.log(`DEBUG: typeof cert.serialNumber=`, typeof cert.serialNumber);
 
-      console.log(`[${pathname}] cert=${serialNumber}, revoked=${revokedSerials.size}`);
+      serialNumber = cert.serialNumber;
+      if (serialNumber) {
+        // Try different formats
+        if (typeof serialNumber === 'string') {
+          serialNumber = serialNumber.toUpperCase();
+        } else if (typeof serialNumber === 'number') {
+          serialNumber = serialNumber.toString(16).toUpperCase();
+        } else if (typeof serialNumber === 'bigint') {
+          serialNumber = serialNumber.toString(16).toUpperCase();
+        }
+      }
+
+      console.log(`[${pathname}] cert_serial=${serialNumber}, revoked_count=${revokedSerials.size}`);
+      console.log(`[${pathname}] revoked_list=${Array.from(revokedSerials)}`);
 
       if (serialNumber && revokedSerials.has(serialNumber)) {
         console.warn(`BLOCKED: cert ${serialNumber} is revoked`);
@@ -72,8 +91,10 @@ function requestHandler(req, res) {
 
       console.log(`ALLOWED: cert ${serialNumber} not in CRL`);
     } catch (e) {
-      console.error('Error checking CRL:', e.message);
+      console.error('Error checking CRL:', e.message, e.stack);
     }
+  } else {
+    console.warn(`No socket.getPeerCertificate available`);
   }
 
   // Proxy to backend (FastAPI on :9001)
