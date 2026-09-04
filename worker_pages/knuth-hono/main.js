@@ -27,10 +27,17 @@ function loadCRL(crlPath) {
     const serials = new Set();
 
     const lines = crlText.split('\n');
-    lines.forEach(line => {
-      const match = line.match(/\s*Serial Number:\s*([0-9A-Fa-f]+)/);
-      if (match) {
-        serials.add(match[1].toUpperCase());
+    console.log(`DEBUG loadCRL: total lines=${lines.length}`);
+
+    lines.forEach((line, i) => {
+      if (line.includes('Serial Number')) {
+        console.log(`DEBUG: line ${i}="${line}"`);
+        const match = line.match(/\s*Serial Number:\s*([0-9A-Fa-f]+)/);
+        console.log(`DEBUG: match=${match}`);
+        if (match) {
+          console.log(`DEBUG: adding serial=${match[1]}`);
+          serials.add(match[1].toUpperCase());
+        }
       }
     });
 
