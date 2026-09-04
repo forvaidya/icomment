@@ -6,6 +6,37 @@ interface Env {
   LAPTOP_BACKEND_MTLS: Fetcher;
 }
 
+let circuitState = { failures: 0, lastFailure: 0, isOpen: false };
+
+function checkCircuitBreaker(): boolean {
+  const now = Date.now();
+  const thirtySeconds = 30 * 1000;
+
+  if (circuitState.isOpen) {
+    const cooldownMs = 5 * 1000;
+    if (now - circuitState.lastFailure > cooldownMs) {
+      circuitState.isOpen = false;
+      circuitState.failures = 0;
+      return true;
+    }
+    return false;
+  }
+
+  if (now - circuitState.lastFailure > thirtySeconds) {
+    circuitState.failures = 0;
+  }
+
+  return true;
+}
+
+function recordFailure(): void {
+  circuitState.failures++;
+  circuitState.lastFailure = Date.now();
+  if (circuitState.failures >= 3) {
+    circuitState.isOpen = true;
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -36,12 +67,29 @@ export default {
         }));
       }
 
+      if (!checkCircuitBreaker()) {
+        console.warn(JSON.stringify({
+          event: 'multiply.circuit_open',
+          requestId,
+          failures: circuitState.failures,
+          durationMs: Date.now() - startedAt
+        }));
+        return new Response('Circuit breaker open: backend unavailable', { status: 503 });
+      }
+
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
         const response = await env.LAPTOP_BACKEND_MTLS.fetch(
-          `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`
+          `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`,
+          { signal: controller.signal }
         );
 
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
+          recordFailure();
           console.warn(JSON.stringify({
             event: 'multiply.upstream.error',
             requestId,
@@ -51,6 +99,7 @@ export default {
           return new Response(`Backend error: ${response.status}`, { status: 502 });
         }
 
+        circuitState.failures = 0;
         console.log(JSON.stringify({
           event: 'multiply.upstream.response',
           requestId,
@@ -60,13 +109,14 @@ export default {
 
         return new Response(response.body, response);
       } catch (e) {
+        recordFailure();
         console.error(JSON.stringify({
           event: 'multiply.upstream.error',
           requestId,
           error: e instanceof Error ? e.message : String(e),
           durationMs: Date.now() - startedAt
         }));
-        return new Response(`mTLS fetch failed: ${e instanceof Error ? e.message : String(e)}`, { status: 502 });
+        return new Response(`Request failed: ${e instanceof Error ? e.message : String(e)}`, { status: 502 });
       }
     }
 
