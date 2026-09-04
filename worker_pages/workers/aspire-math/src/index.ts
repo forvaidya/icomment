@@ -74,12 +74,15 @@ export default {
           failures: circuitState.failures,
           durationMs: Date.now() - startedAt
         }));
-        return new Response('Circuit breaker open: backend unavailable', { status: 503 });
+        return Response.json({
+          error: 'Circuit breaker open: backend temporarily unavailable',
+          requestId
+        }, { status: 503 });
       }
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const response = await env.LAPTOP_BACKEND_MTLS.fetch(
           `https://knuth.awanipro.com:9000/multiply?${url.searchParams.toString()}`,
@@ -96,7 +99,10 @@ export default {
             status: response.status,
             durationMs: Date.now() - startedAt
           }));
-          return new Response(`Backend error: ${response.status}`, { status: 502 });
+          return Response.json({
+            error: `Backend error: HTTP ${response.status}`,
+            requestId
+          }, { status: 502 });
         }
 
         circuitState.failures = 0;
@@ -110,13 +116,17 @@ export default {
         return new Response(response.body, response);
       } catch (e) {
         recordFailure();
+        const errorMsg = e instanceof Error ? e.message : String(e);
         console.error(JSON.stringify({
           event: 'multiply.upstream.error',
           requestId,
-          error: e instanceof Error ? e.message : String(e),
+          error: errorMsg,
           durationMs: Date.now() - startedAt
         }));
-        return new Response(`Request failed: ${e instanceof Error ? e.message : String(e)}`, { status: 502 });
+        return Response.json({
+          error: errorMsg,
+          requestId
+        }, { status: 502 });
       }
     }
 
