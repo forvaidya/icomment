@@ -1,5 +1,3 @@
-import ssl
-import os
 import argparse
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -25,78 +23,17 @@ async def multiply(a: float, b: float):
 if __name__ == "__main__":
     import uvicorn
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--no-mtls", action="store_true", help="Run plain HTTP without mTLS (test mode)")
-    parser.add_argument("--cert", type=str, default="certs/out/server-cert.pem", help="Path to SSL certificate")
-    parser.add_argument("--key", type=str, default="certs/out/server-key.pem", help="Path to SSL private key")
-    parser.add_argument("--ca", type=str, default="certs/out/ca-cert.pem", help="Path to CA cert for client verification")
-    parser.add_argument("--crl", type=str, default="certs/out/crl.pem", help="Path to CRL file (for reference)")
-    args = parser.parse_args()
+    print("\n" + "="*60)
+    print("✅ BACKEND SERVER (Pure HTTP)")
+    print("="*60)
+    print("FastAPI running on http://0.0.0.0:9001 (internal only)")
+    print("No TLS, no client cert validation")
+    print("Protected by reverse proxy (Hono on :9000)")
+    print("="*60 + "\n")
 
-    if args.no_mtls:
-        # Test mode: plain HTTP
-        print("\n" + "="*60)
-        print("⚠️  MTLS DISABLED !!")
-        print("="*60)
-        print("Server running in TEST MODE (plain HTTP, no client cert required)")
-        print("\nTo enable mTLS (require client certificates):")
-        print("  python3 main.py")
-        print("\nWith mTLS enabled, only clients with valid certs can connect:")
-        print("  curl --cert certs/out/client-cert.pem \\")
-        print("       --key certs/out/client-key.pem \\")
-        print("       --cacert certs/out/ca-cert.pem \\")
-        print("       https://localhost:9000/multiply?a=3&b=4")
-        print("="*60 + "\n")
-        uvicorn.run(
-            app,
-            host="0.0.0.0",
-            port=9000,
-            log_level="info"
-        )
-    else:
-        # Production: HTTPS + mTLS client cert verification
-        if not os.path.exists(args.cert):
-            print("\n" + "="*60)
-            print("❌ HTTPS certificate not found!")
-            print("="*60)
-            print(f"Expected at: {args.cert}")
-            print("\nTo set up Let's Encrypt certificate:")
-            print("  ./setup-https.sh")
-            print("\nOr use self-signed certs for testing:")
-            print("  python3 main.py --cert certs/out/server-cert.pem \\")
-            print("                   --key certs/out/server-key.pem \\")
-            print("                   --ca certs/out/ca-cert.pem")
-            print("="*60 + "\n")
-            exit(1)
-
-        print("\n" + "="*60)
-        print("✅ MTLS ENABLED")
-        print("="*60)
-        print("Server running with mutual TLS (client cert verification required)")
-        print(f"Certificate: {args.cert}")
-        print(f"Private Key: {args.key}")
-        print(f"CA Cert:     {args.ca}")
-        print(f"CRL File:    {args.crl}")
-        print("\nClients MUST present valid certificate signed by CA:")
-        print("  curl --cert certs/out/client-cert.pem \\")
-        print("       --key certs/out/client-key.pem \\")
-        print("       --cacert certs/out/ca-cert.pem \\")
-        print("       https://localhost:9000/multiply?a=3&b=4")
-        print("\nNOTE: CRL checking is done at OpenSSL layer via:")
-        print(f"  openssl s_server -cert {args.cert} -key {args.key} \\")
-        print(f"                   -CAfile {args.ca} -CRLfile {args.crl} ...")
-        print("\nTo enable revocation, copy revoked CRL to active:")
-        print("  cp certs/out/crl-revoked.pem certs/out/crl.pem")
-        print("  # Restart server to apply revocation")
-        print("="*60 + "\n")
-
-        uvicorn.run(
-            app,
-            host="0.0.0.0",
-            port=9000,
-            ssl_keyfile=args.key,
-            ssl_certfile=args.cert,
-            ssl_ca_certs=args.ca,
-            ssl_cert_reqs=ssl.CERT_REQUIRED,
-            log_level="info"
-        )
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=9001,
+        log_level="info"
+    )

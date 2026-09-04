@@ -44,25 +44,24 @@ function loadCRL(crlPath) {
 
 let revokedSerials = loadCRL(crlFile);
 
-// Simple HTTP handler
+// Simple HTTP handler with reverse proxy
 function requestHandler(req, res) {
   // Extract path and query
   const url = new URL(req.url, `https://${req.headers.host}`);
   const pathname = url.pathname;
-  const a = url.searchParams.get('a');
-  const b = url.searchParams.get('b');
 
   // Reload CRL on each request
   revokedSerials = loadCRL(crlFile);
 
   // Check CRL
   const socket = req.socket;
+  let serialNumber = 'unknown';
   if (socket && socket.getPeerCertificate) {
     try {
       const cert = socket.getPeerCertificate();
-      const serialNumber = cert.serialNumber?.toUpperCase();
+      serialNumber = cert.serialNumber?.toUpperCase();
 
-      console.log(`[${pathname}] cert serial=${serialNumber}, revoked count=${revokedSerials.size}`);
+      console.log(`[${pathname}] cert=${serialNumber}, revoked=${revokedSerials.size}`);
 
       if (serialNumber && revokedSerials.has(serialNumber)) {
         console.warn(`BLOCKED: cert ${serialNumber} is revoked`);
@@ -77,25 +76,25 @@ function requestHandler(req, res) {
     }
   }
 
-  // Route /multiply
-  if (pathname === '/multiply') {
-    const numA = parseFloat(a);
-    const numB = parseFloat(b);
+  // Proxy to backend (FastAPI on :9001)
+  const backendUrl = `http://localhost:9001${url.pathname}${url.search}`;
+  console.log(`Proxying ${pathname} to ${backendUrl}`);
 
-    if (!Number.isFinite(numA) || !Number.isFinite(numB)) {
-      res.writeHead(422, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Query parameters a and b must be valid numbers' }));
-      return;
-    }
+  const httpReq = require('http').request(backendUrl, {
+    method: req.method,
+    headers: req.headers,
+  }, (backendRes) => {
+    res.writeHead(backendRes.statusCode, backendRes.headers);
+    backendRes.pipe(res);
+  });
 
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ a: numA, b: numB, result: numA * numB }));
-    return;
-  }
+  httpReq.on('error', (e) => {
+    console.error('Backend error:', e.message);
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Backend unavailable' }));
+  });
 
-  // 404
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
+  req.pipe(httpReq);
 }
 
 // HTTPS server with mTLS
@@ -110,12 +109,13 @@ const options = {
 const server = https.createServer(options, requestHandler);
 
 console.log('\n' + '='.repeat(60));
-console.log('✅ HONO mTLS SERVER (Node.js + CRL checking)');
+console.log('✅ REVERSE PROXY (mTLS + CRL checking)');
 console.log('='.repeat(60));
-console.log('Server running on https://0.0.0.0:9000');
-console.log('mTLS + CRL checking enabled');
+console.log('Hono proxy on https://0.0.0.0:9000');
+console.log('  ↓ (check CRL)');
+console.log('FastAPI backend on http://localhost:9001 (internal)');
 console.log('');
-console.log('Test:');
+console.log('Test from client:');
 console.log('  curl --cert ../knuth/certs/out/client-cert.pem \\');
 console.log('       --key ../knuth/certs/out/client-key.pem \\');
 console.log('       --cacert ../knuth/certs/out/ca-cert.pem \\');
