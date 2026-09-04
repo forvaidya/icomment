@@ -33,28 +33,36 @@ def load_crl(path):
 @app.middleware("http")
 async def check_crl_middleware(request: Request, call_next):
     """Check if client cert is in CRL before processing request."""
-    # Get client certificate from connection
-    connection = request.scope.get("client")
     transport = request.scope.get("transport")
+    logger.info(f"CRL middleware: transport={type(transport).__name__}")
 
     if transport and hasattr(transport, "get_extra_info"):
         try:
-            # Get the SSL object from transport
             ssl_obj = transport.get_extra_info("ssl_object")
+            logger.info(f"CRL middleware: ssl_object={ssl_obj is not None}")
+
             if ssl_obj:
-                # Get peer certificate in DER format
                 peer_cert_der = ssl_obj.getpeercert(binary_form=True)
+                logger.info(f"CRL middleware: peer_cert_der length={len(peer_cert_der) if peer_cert_der else 0}")
+
                 if peer_cert_der:
                     cert = x509.load_der_x509_certificate(peer_cert_der, default_backend())
+                    logger.info(f"CRL middleware: cert serial={cert.serial_number:x}")
+
                     revoked = load_crl(crl_path)
+                    logger.info(f"CRL middleware: revoked count={len(revoked)}")
+
                     if cert.serial_number in revoked:
-                        logger.warning(f"Rejected: cert {cert.serial_number:x} is revoked")
+                        logger.warning(f"BLOCKED: cert {cert.serial_number:x} is revoked")
                         return JSONResponse(
                             {"error": "Client certificate revoked"},
                             status_code=403
                         )
+                    logger.info(f"ALLOWED: cert {cert.serial_number:x} not in CRL")
         except Exception as e:
-            logger.error(f"Error checking CRL: {e}")
+            logger.error(f"CRL middleware error: {e}", exc_info=True)
+    else:
+        logger.warning(f"CRL middleware: no transport or get_extra_info")
 
     return await call_next(request)
 
