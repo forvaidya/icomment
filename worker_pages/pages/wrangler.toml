@@ -1,9 +1,7 @@
 name = "aspire-pages"
 compatibility_date = "2026-08-30"
 pages_build_output_dir = "."
-
-# Keep production deploys explicit: use `npm run deploy` from a clean `main`
-# checkout. Omitting `--branch` makes Wrangler create the production deploy.
+build = { command = "npm run build" }
 
 [[services]]
 binding = "ASPIRE_MATH"
