@@ -33,36 +33,47 @@ def load_crl(path):
 @app.middleware("http")
 async def check_crl_middleware(request: Request, call_next):
     """Check if client cert is in CRL before processing request."""
-    transport = request.scope.get("transport")
-    logger.info(f"CRL middleware: transport={type(transport).__name__}")
+    try:
+        # Try to access transport from scope
+        transport = request.scope.get("transport")
+        if not transport:
+            logger.warning("CRL: no transport in scope")
+            return await call_next(request)
 
-    if transport and hasattr(transport, "get_extra_info"):
-        try:
-            ssl_obj = transport.get_extra_info("ssl_object")
-            logger.info(f"CRL middleware: ssl_object={ssl_obj is not None}")
+        # Get socket from transport
+        sock = transport.get_extra_info("socket")
+        if not sock:
+            logger.warning("CRL: no socket from transport")
+            return await call_next(request)
 
-            if ssl_obj:
-                peer_cert_der = ssl_obj.getpeercert(binary_form=True)
-                logger.info(f"CRL middleware: peer_cert_der length={len(peer_cert_der) if peer_cert_der else 0}")
+        # Get SSL object from socket
+        ssl_obj = None
+        if hasattr(sock, "_ssl_object"):
+            ssl_obj = sock._ssl_object
+        elif hasattr(sock, "getpeercert"):
+            ssl_obj = sock
 
-                if peer_cert_der:
-                    cert = x509.load_der_x509_certificate(peer_cert_der, default_backend())
-                    logger.info(f"CRL middleware: cert serial={cert.serial_number:x}")
+        if ssl_obj and hasattr(ssl_obj, "getpeercert"):
+            peer_cert_der = ssl_obj.getpeercert(binary_form=True)
+            logger.info(f"CRL: got peer cert, length={len(peer_cert_der) if peer_cert_der else 0}")
 
-                    revoked = load_crl(crl_path)
-                    logger.info(f"CRL middleware: revoked count={len(revoked)}")
+            if peer_cert_der:
+                cert = x509.load_der_x509_certificate(peer_cert_der, default_backend())
+                revoked = load_crl(crl_path)
+                logger.info(f"CRL: cert serial={cert.serial_number:x}, revoked count={len(revoked)}")
 
-                    if cert.serial_number in revoked:
-                        logger.warning(f"BLOCKED: cert {cert.serial_number:x} is revoked")
-                        return JSONResponse(
-                            {"error": "Client certificate revoked"},
-                            status_code=403
-                        )
-                    logger.info(f"ALLOWED: cert {cert.serial_number:x} not in CRL")
-        except Exception as e:
-            logger.error(f"CRL middleware error: {e}", exc_info=True)
-    else:
-        logger.warning(f"CRL middleware: no transport or get_extra_info")
+                if cert.serial_number in revoked:
+                    logger.warning(f"BLOCKED: cert {cert.serial_number:x} is revoked")
+                    return JSONResponse(
+                        {"error": "Client certificate revoked"},
+                        status_code=403
+                    )
+                logger.info(f"ALLOWED: cert {cert.serial_number:x} not in CRL")
+        else:
+            logger.warning(f"CRL: no ssl_obj or getpeercert method")
+
+    except Exception as e:
+        logger.error(f"CRL middleware error: {e}", exc_info=True)
 
     return await call_next(request)
 
