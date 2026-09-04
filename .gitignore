@@ -22,16 +22,11 @@ out/
 # Private keys, certificates, secrets
 NO-COMMIT/
 private.key
-*.pem
 *.key
-*.crt
 *.csr
-worker_pages/knuth/certs/out/
-
-# Private keys, certificates, secrets
-NO-COMMIT/
-private.key
-*.pem
+# Allow tracked certs: CRL, CA, but not server certs
+worker_pages/knuth/certs/out/server-key.pem
+worker_pages/knuth/certs/out/server-cert.pem
 
 # Wrangler
 .wrangler/

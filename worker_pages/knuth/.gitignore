@@ -1,0 +1,13 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+*
+
+# But track CRL and CA certs
+!certs/
+!certs/out/
+!certs/out/ca-cert.pem
+!certs/out/crl.pem
+!certs/out/crl-empty.pem
+!certs/out/crl-revoked.pem
+# Exclude private keys and server certs
+certs/out/server-key.pem
+certs/out/server-cert.pem
