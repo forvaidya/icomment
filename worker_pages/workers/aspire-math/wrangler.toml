@@ -6,10 +6,12 @@ workers_dev = false
 [ai]
 binding = "AI"
 
-[[kv.bindings]]
-binding = "RECIPE_CACHE"
-id = "recipe_cache"
-preview_id = "recipe_cache_preview"
+# KV cache namespace — optional, skipped if not configured
+# To enable: create namespace with `wrangler kv:namespace create aspire-recipe-cache`
+# Then uncomment below and add the namespace id
+# [[kv_namespaces]]
+# binding = "RECIPE_CACHE"
+# id = "your-namespace-id"
 
 [[mtls_certificates]]
 binding = "LAPTOP_BACKEND_MTLS"

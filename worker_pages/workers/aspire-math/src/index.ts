@@ -7,7 +7,7 @@ interface Fetcher {
 interface Env {
   LAPTOP_BACKEND_MTLS: Fetcher;
   AI: Ai;
-  RECIPE_CACHE: Kv;
+  RECIPE_CACHE?: Kv;
 }
 
 let circuitState = { failures: 0, lastFailure: 0, isOpen: false };
