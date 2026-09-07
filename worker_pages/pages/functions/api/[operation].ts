@@ -19,3 +19,21 @@ export const onRequestGet = async ({ request, env, params }: { request: Request;
     headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' }
   });
 };
+
+export const onRequestPost = async ({ request, env, params }: { request: Request; env: Env; params: { operation: string } }) => {
+  const operation = params.operation;
+
+  const response = await env.ASPIRE_MATH.fetch(
+    `https://aspire-math/${operation}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: await request.text()
+    }
+  );
+
+  return new Response(response.body, {
+    status: response.status,
+    headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' }
+  });
+};
