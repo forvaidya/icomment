@@ -1,9 +1,12 @@
+import { runRecipeAgent, type Ai } from './meal';
+
 interface Fetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
 interface Env {
   LAPTOP_BACKEND_MTLS: Fetcher;
+  AI: Ai;
 }
 
 let circuitState = { failures: 0, lastFailure: 0, isOpen: false };
@@ -139,7 +142,7 @@ export default {
       const startedAt = Date.now();
 
       try {
-        const body = await request.json() as { query: string; diet: string; allergies: string[] };
+        const body = await request.json() as { query: string; diet: unknown; allergies: unknown };
 
         console.log(JSON.stringify({
           event: 'meal.request.received',
@@ -148,17 +151,20 @@ export default {
           path: url.pathname,
           hasQuery: !!body.query,
           diet: body.diet,
-          allergiesCount: body.allergies?.length || 0,
-          durationMs: Date.now() - startedAt
+          allergiesCount: Array.isArray(body.allergies) ? body.allergies.length : 0
         }));
 
-        return Response.json({
-          message: 'Enjoy your meal!',
-          query: body.query,
-          diet: body.diet,
-          allergies: body.allergies || [],
-          requestId
-        }, { status: 200 });
+        const result = await runRecipeAgent(env.AI, body, requestId);
+        if (!result) {
+          return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
+        }
+
+        console.log(JSON.stringify({
+          event: 'meal.request.ok',
+          requestId,
+          durationMs: Date.now() - startedAt
+        }));
+        return Response.json({ ...result, requestId }, { status: 200 });
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : String(e);
         console.error(JSON.stringify({
@@ -168,9 +174,9 @@ export default {
           durationMs: Date.now() - startedAt
         }));
         return Response.json({
-          error: 'Invalid request body',
+          error: errorMsg,
           requestId
-        }, { status: 400 });
+        }, { status: 500 });
       }
     }
 
