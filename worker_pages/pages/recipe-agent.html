@@ -40,17 +40,17 @@
 
             <div class="form-group">
                 <label class="form-label">Diet</label>
-                <div class="radio-group">
-                    <div class="radio-option">
-                        <input type="radio" id="veg" name="diet" value="veg" checked>
+                <div class="checkbox-grid">
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="veg" name="diet" value="veg" checked>
                         <label for="veg">Veg</label>
                     </div>
-                    <div class="radio-option">
-                        <input type="radio" id="non_veg" name="diet" value="non_veg">
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="non_veg" name="diet" value="non_veg">
                         <label for="non_veg">Non-Veg</label>
                     </div>
-                    <div class="radio-option">
-                        <input type="radio" id="vegan" name="diet" value="vegan">
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="vegan" name="diet" value="vegan">
                         <label for="vegan">Vegan</label>
                     </div>
                 </div>
@@ -109,7 +109,8 @@
 
         generateBtn.addEventListener('click', async () => {
             const query = document.getElementById('query').value;
-            const diet = document.querySelector('input[name="diet"]:checked').value;
+            const diet = Array.from(document.querySelectorAll('input[name="diet"]:checked'))
+                .map(cb => cb.value);
             const allergies = Array.from(document.querySelectorAll('input[name="allergies"]:checked'))
                 .map(cb => cb.value);
 
