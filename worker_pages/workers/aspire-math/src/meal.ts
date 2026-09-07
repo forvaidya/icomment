@@ -5,8 +5,14 @@ export interface Ai {
   run(model: string, input: unknown): Promise<any>;
 }
 
+export interface Kv {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
+
 const MODEL = '@cf/meta/llama-3.1-8b-instruct';
 const MAX_TURNS = 5;
+const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
 
 type Diet = 'veg' | 'non_veg' | 'vegan';
 
@@ -136,13 +142,25 @@ function toolCallOf(call: any): { name: string; args: any } {
   return { name: fn.name, args: typeof raw === 'string' ? extractJson(raw) ?? {} : raw };
 }
 
+
 export async function runRecipeAgent(
   ai: Ai,
   body: { query?: string; diet?: unknown; allergies?: unknown },
   requestId: string,
+  kv?: Kv,
 ) {
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
+
+  // ponytail: cache key is JSON hash. No secure crypto needed, just deterministic collision avoidance.
+  const key = `recipe:${btoa(JSON.stringify({ q: body.query, d: diet, a: allergies.sort() })).replace(/[+/=]/g, '')}`.slice(0, 512);
+  if (kv) {
+    const cached = await kv.get(key);
+    if (cached) {
+      console.log(JSON.stringify({ event: 'meal.cache.hit', requestId, key }));
+      return JSON.parse(cached);
+    }
+  }
 
   const messages: any[] = [
     { role: 'system', content: systemPrompt(diet, allergies) },
@@ -160,7 +178,14 @@ export async function runRecipeAgent(
     const calls: any[] = out?.tool_calls ?? [];
     if (!calls.length) {
       const recipe = extractJson(out?.response);
-      if (recipe?.title && recipe?.ingredients && recipe?.steps) return { recipe };
+      if (recipe?.title && recipe?.ingredients && recipe?.steps) {
+        const result = { recipe };
+        if (kv) {
+          await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
+          console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));
+        }
+        return result;
+      }
       return null;
     }
 
@@ -177,5 +202,11 @@ export async function runRecipeAgent(
 
   // Turn cap hit — hand back whatever the model last produced.
   const recipe = extractJson(last?.response);
-  return recipe ? { recipe, warning: 'Stopped at iteration cap' } : null;
+  if (!recipe) return null;
+  const result = { recipe, warning: 'Stopped at iteration cap' };
+  if (kv) {
+    await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
+    console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));
+  }
+  return result;
 }

@@ -1,4 +1,4 @@
-import { runRecipeAgent, type Ai } from './meal';
+import { runRecipeAgent, type Ai, type Kv } from './meal';
 
 interface Fetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
@@ -7,6 +7,7 @@ interface Fetcher {
 interface Env {
   LAPTOP_BACKEND_MTLS: Fetcher;
   AI: Ai;
+  RECIPE_CACHE: Kv;
 }
 
 let circuitState = { failures: 0, lastFailure: 0, isOpen: false };
@@ -154,7 +155,7 @@ export default {
           allergiesCount: Array.isArray(body.allergies) ? body.allergies.length : 0
         }));
 
-        const result = await runRecipeAgent(env.AI, body, requestId);
+        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE);
         if (!result) {
           return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
         }

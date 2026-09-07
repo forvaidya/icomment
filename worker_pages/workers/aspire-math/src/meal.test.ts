@@ -5,6 +5,14 @@ import { checkIngredient, extractJson, runRecipeAgent } from './meal';
 const off = (product: unknown) => async () =>
   new Response(JSON.stringify({ products: product ? [product] : [] }));
 
+const mockKv = () => {
+  const store: Record<string, string> = {};
+  return {
+    async get(k: string) { return store[k] ?? null; },
+    async put(k: string, v: string) { store[k] = v; },
+  };
+};
+
 async function main() {
   const realFetch = globalThis.fetch;
 
@@ -52,6 +60,25 @@ async function main() {
   const looper = { async run() { turns++; return { response: '', tool_calls: [{ name: 'check_ingredient', arguments: { name: 'x' } }] }; } };
   assert.equal(await runRecipeAgent(looper, { query: 'x', diet: 'veg', allergies: [] }, 'test'), null);
   assert.equal(turns, 5);
+
+  globalThis.fetch = realFetch;
+
+  // Cache: cache hit skips the agent loop.
+  globalThis.fetch = off({ allergens_tags: [], ingredients_analysis_tags: ['en:vegan'] }) as any;
+  let runCount = 0;
+  const aiWithCount = {
+    async run() {
+      runCount++;
+      return { response: '{"title":"Tofu","description":"d","ingredients":[{"name":"tofu","amount":"200g"}],"steps":["x"],"tags":["vegan"]}' };
+    },
+  };
+  const kv = mockKv();
+  const r1 = await runRecipeAgent(aiWithCount, { query: 'tofu', diet: 'vegan', allergies: [] }, 'test1', kv);
+  assert.equal(runCount, 1, 'first request runs agent');
+  assert(r1?.recipe.title);
+  const r2 = await runRecipeAgent(aiWithCount, { query: 'tofu', diet: 'vegan', allergies: [] }, 'test2', kv);
+  assert.equal(runCount, 1, 'second request hits cache, no agent call');
+  assert.deepEqual(r1?.recipe, r2?.recipe, 'cached result matches');
 
   globalThis.fetch = realFetch;
   console.log('ok');
