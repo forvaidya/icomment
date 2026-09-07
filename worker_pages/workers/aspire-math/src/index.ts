@@ -130,6 +130,50 @@ export default {
       }
     }
 
+    if (url.pathname === '/meal') {
+      if (request.method !== 'POST') {
+        return Response.json({ error: 'Only POST allowed' }, { status: 405 });
+      }
+
+      const requestId = crypto.randomUUID();
+      const startedAt = Date.now();
+
+      try {
+        const body = await request.json() as { query: string; diet: string; allergies: string[] };
+
+        console.log(JSON.stringify({
+          event: 'meal.request.received',
+          requestId,
+          method: request.method,
+          path: url.pathname,
+          hasQuery: !!body.query,
+          diet: body.diet,
+          allergiesCount: body.allergies?.length || 0,
+          durationMs: Date.now() - startedAt
+        }));
+
+        return Response.json({
+          message: 'Enjoy your meal!',
+          query: body.query,
+          diet: body.diet,
+          allergies: body.allergies || [],
+          requestId
+        }, { status: 200 });
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        console.error(JSON.stringify({
+          event: 'meal.request.error',
+          requestId,
+          error: errorMsg,
+          durationMs: Date.now() - startedAt
+        }));
+        return Response.json({
+          error: 'Invalid request body',
+          requestId
+        }, { status: 400 });
+      }
+    }
+
     if (url.pathname !== '/add') {
       return new Response('Not found', { status: 404 });
     }
