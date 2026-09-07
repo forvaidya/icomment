@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍲 Recipe Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        nav {
+            margin-bottom: 30px;
+        }
+
+        nav a {
+            color: #0066cc;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        nav a:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin-bottom: 30px;
+            font-size: 28px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 20px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .radio-option input[type="radio"] {
+            cursor: pointer;
+        }
+
+        .radio-option label {
+            margin: 0;
+            font-weight: normal;
+            cursor: pointer;
+        }
+
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .checkbox-option input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .checkbox-option label {
+            margin: 0;
+            font-weight: normal;
+            cursor: pointer;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            background: #0052a3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #result {
+            margin-top: 25px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #eee;
+            min-height: 20px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            color: #333;
+        }
+
+        .error {
+            color: #d32f2f;
+        }
+
+        .loading {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">← Back to Home</a>
+    </nav>
+
+    <div class="container">
+        <h1>🍲 Recipe Agent</h1>
+
+        <div class="form-group">
+            <label for="query">What would you like to cook?</label>
+            <textarea id="query" rows="3" placeholder="What would you like to cook?"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>Diet</label>
+            <div class="radio-group">
+                <div class="radio-option">
+                    <input type="radio" id="veg" name="diet" value="veg" checked>
+                    <label for="veg">Veg</label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="non_veg" name="diet" value="non_veg">
+                    <label for="non_veg">Non-Veg</label>
+                </div>
+                <div class="radio-option">
+                    <input type="radio" id="vegan" name="diet" value="vegan">
+                    <label for="vegan">Vegan</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Allergies</label>
+            <div class="checkbox-grid">
+                <div class="checkbox-option">
+                    <input type="checkbox" id="peanuts" name="allergies" value="peanuts">
+                    <label for="peanuts">Peanuts</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="tree_nuts" name="allergies" value="tree_nuts">
+                    <label for="tree_nuts">Tree Nuts</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="dairy" name="allergies" value="dairy">
+                    <label for="dairy">Dairy</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="shellfish" name="allergies" value="shellfish">
+                    <label for="shellfish">Shellfish</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="eggs" name="allergies" value="eggs">
+                    <label for="eggs">Eggs</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="wheat" name="allergies" value="wheat">
+                    <label for="wheat">Wheat/Gluten</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="soy" name="allergies" value="soy">
+                    <label for="soy">Soy</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="sesame" name="allergies" value="sesame">
+                    <label for="sesame">Sesame</label>
+                </div>
+                <div class="checkbox-option">
+                    <input type="checkbox" id="fish" name="allergies" value="fish">
+                    <label for="fish">Fish</label>
+                </div>
+            </div>
+        </div>
+
+        <button id="generateBtn">Generate Recipe</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const generateBtn = document.getElementById('generateBtn');
+        const resultDiv = document.getElementById('result');
+
+        generateBtn.addEventListener('click', async () => {
+            const query = document.getElementById('query').value;
+            const diet = document.querySelector('input[name="diet"]:checked').value;
+            const allergies = Array.from(document.querySelectorAll('input[name="allergies"]:checked'))
+                .map(cb => cb.value);
+
+            // Show loading state
+            resultDiv.textContent = 'Generating...';
+            resultDiv.classList.add('loading');
+            generateBtn.disabled = true;
+
+            try {
+                const response = await fetch('/meal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query, diet, allergies })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    resultDiv.textContent = `Error: ${data.error || 'Unknown error'}`;
+                    resultDiv.classList.remove('loading');
+                    resultDiv.classList.add('error');
+                } else {
+                    resultDiv.textContent = JSON.stringify(data, null, 2);
+                    resultDiv.classList.remove('loading', 'error');
+                }
+            } catch (error) {
+                resultDiv.textContent = `Error: ${error.message}`;
+                resultDiv.classList.remove('loading');
+                resultDiv.classList.add('error');
+            } finally {
+                generateBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
