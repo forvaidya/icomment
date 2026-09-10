@@ -241,8 +241,17 @@ export async function runRecipeAgent(
     if (!calls.length) {
       const recipe = extractJson(out?.response);
       console.log(JSON.stringify({ event: 'meal.extract', requestId, turn, extracted: !!recipe, hasTitle: !!recipe?.title, hasIngredients: Array.isArray(recipe?.ingredients), hasSteps: Array.isArray(recipe?.steps) }));
-      if (recipe?.title && recipe?.ingredients && recipe?.steps) {
-        const result = { recipe };
+
+      // Accept partial recipes, fill in defaults for missing fields
+      if (recipe && (recipe.title || recipe.ingredients || recipe.steps)) {
+        const filled = {
+          title: recipe.title || 'Recipe',
+          description: recipe.description || 'A delicious recipe',
+          ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [{ name: 'ingredients', amount: 'as needed' }],
+          steps: Array.isArray(recipe.steps) ? recipe.steps : ['Prepare and cook'],
+          tags: Array.isArray(recipe.tags) ? recipe.tags : [],
+        };
+        const result = { recipe: filled };
         if (kv) {
           await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
           console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));
@@ -266,8 +275,19 @@ export async function runRecipeAgent(
   // Turn cap hit — hand back whatever the model last produced.
   const recipe = extractJson(last?.response);
   console.log(JSON.stringify({ event: 'meal.cap.reached', requestId, feedback: !!feedback, rawResponse: String(last?.response).slice(0, 500), extracted: !!recipe }));
+
   if (!recipe) return null;
-  const result = { recipe, warning: 'Stopped at iteration cap' };
+
+  // Fill in missing fields
+  const filled = {
+    title: recipe.title || 'Recipe',
+    description: recipe.description || 'A delicious recipe',
+    ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [{ name: 'ingredients', amount: 'as needed' }],
+    steps: Array.isArray(recipe.steps) ? recipe.steps : ['Prepare and cook'],
+    tags: Array.isArray(recipe.tags) ? recipe.tags : [],
+  };
+
+  const result = { recipe: filled, warning: 'Stopped at iteration cap' };
   if (kv) {
     await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
     console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));
