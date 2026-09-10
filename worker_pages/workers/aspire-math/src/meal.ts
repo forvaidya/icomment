@@ -127,22 +127,37 @@ export async function checkIngredient(name: string, diet: Diet, allergies: strin
 }
 
 function systemPrompt(diet: Diet, allergies: string[]) {
-  return `You are a recipe agent. You help users find or create recipes that respect their dietary restrictions.
+  return `You are a recipe agent. Create recipes that respect dietary restrictions.
 
 Dietary class: ${diet}
-- veg: no meat or fish, dairy and eggs are allowed
-- non_veg: all ingredients allowed
-- vegan: no animal products whatsoever (no meat, fish, dairy, eggs, honey)
+- veg: no meat or fish, dairy and eggs OK
+- non_veg: all ingredients OK
+- vegan: no animal products (no meat, fish, dairy, eggs, honey)
 
-Allergies to avoid: ${allergies.length ? allergies.join(', ') : 'none'}
+Avoid allergies: ${allergies.length ? allergies.join(', ') : 'none'}
 
-Rules:
-1. Never include any ingredient that conflicts with the diet or allergies
-2. If you are unsure whether an ingredient is safe, call the check_ingredient tool to verify it
-3. If check_ingredient reveals a conflict, remove that ingredient and substitute a safe alternative
-4. Always return the final recipe as structured JSON with fields: title, description, ingredients (array of {name, amount}), steps (array of strings), tags (array of strings like 'vegan', 'nut-free', 'high-protein')
-5. Keep recipes practical — ingredients should be commonly available
-6. Yield 2-4 servings`;
+RULES:
+1. Never include ingredients that conflict with diet/allergies
+2. If unsure about an ingredient, call check_ingredient
+3. If check_ingredient flags a conflict, remove and substitute safely
+4. Return ONLY valid JSON (no other text)
+
+RESPONSE FORMAT (required):
+{
+  "title": "Recipe Name",
+  "description": "Brief description",
+  "ingredients": [
+    {"name": "ingredient", "amount": "quantity"},
+    {"name": "ingredient2", "amount": "quantity2"}
+  ],
+  "steps": [
+    "Step 1",
+    "Step 2"
+  ],
+  "tags": ["tag1", "tag2"]
+}
+
+Your response must be ONLY the JSON object, nothing else.`;
 }
 
 // The model returns JSON in prose about as often as it returns bare JSON.
@@ -209,6 +224,7 @@ export async function runRecipeAgent(
     const calls: any[] = out?.tool_calls ?? [];
     if (!calls.length) {
       const recipe = extractJson(out?.response);
+      console.log(JSON.stringify({ event: 'meal.model.response', requestId, turn, hasRecipe: !!recipe, hasTitle: !!recipe?.title, hasIngredients: !!recipe?.ingredients, hasSteps: !!recipe?.steps, response: String(out?.response).slice(0, 200) }));
       if (recipe?.title && recipe?.ingredients && recipe?.steps) {
         const result = { recipe };
         if (kv) {
