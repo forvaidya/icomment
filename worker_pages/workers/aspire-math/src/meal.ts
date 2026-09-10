@@ -228,10 +228,12 @@ export async function runRecipeAgent(
     const out = await ai.run(model, { messages, tools: TOOLS });
     last = out;
 
+    console.log(JSON.stringify({ event: 'meal.turn', requestId, turn, hasToolCalls: !!out?.tool_calls?.length, responseLength: String(out?.response).length, rawResponse: String(out?.response).slice(0, 300) }));
+
     const calls: any[] = out?.tool_calls ?? [];
     if (!calls.length) {
       const recipe = extractJson(out?.response);
-      console.log(JSON.stringify({ event: 'meal.model.response', requestId, turn, hasRecipe: !!recipe, hasTitle: !!recipe?.title, hasIngredients: !!recipe?.ingredients, hasSteps: !!recipe?.steps, response: String(out?.response).slice(0, 200) }));
+      console.log(JSON.stringify({ event: 'meal.extract', requestId, turn, extracted: !!recipe, hasTitle: !!recipe?.title, hasIngredients: Array.isArray(recipe?.ingredients), hasSteps: Array.isArray(recipe?.steps) }));
       if (recipe?.title && recipe?.ingredients && recipe?.steps) {
         const result = { recipe };
         if (kv) {
