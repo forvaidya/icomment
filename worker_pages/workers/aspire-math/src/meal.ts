@@ -10,7 +10,7 @@ export interface Kv {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
-const MODEL = '@cf/meta/llama-3.1-8b-instruct';
+const MODEL = '@cf/meta/llama-3-8b-instruct';
 const MAX_TURNS = 5;
 const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
 
