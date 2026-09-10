@@ -10,7 +10,9 @@ export interface Kv {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
-const MODEL = '@cf/meta/llama-3-8b-instruct';
+// Check https://developers.cloudflare.com/workers-ai/models/ for current models
+// Using Mistral 7B as it's stable and widely available
+const MODEL = '@cf/mistral/mistral-7b-instruct-v0.2';
 const MAX_TURNS = 5;
 const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
 

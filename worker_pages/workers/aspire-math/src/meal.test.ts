@@ -68,7 +68,7 @@ async function main() {
   let runCount = 0;
   const aiWithCount = {
     async run(model: string) {
-      if (model !== '@cf/meta/llama-3-8b-instruct') throw new Error(`wrong model: ${model}`);
+      if (model !== '@cf/mistral/mistral-7b-instruct-v0.2') throw new Error(`wrong model: ${model}`);
       runCount++;
       return { response: '{"title":"Tofu","description":"d","ingredients":[{"name":"tofu","amount":"200g"}],"steps":["x"],"tags":["vegan"]}' };
     },
