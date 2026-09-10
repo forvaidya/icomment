@@ -10,9 +10,35 @@ export interface Kv {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
-// Check https://developers.cloudflare.com/workers-ai/models/ for current models
-// Using Mistral 7B as it's stable and widely available
-const MODEL = '@cf/mistral/mistral-7b-instruct-v0.2';
+// Model fallback chain: try newer models first, fall back to stable ones
+// Last checked: Sept 10, 2026 — see https://developers.cloudflare.com/workers-ai/models/
+const MODEL_CHAIN = [
+  '@cf/meta/llama-4-scout-17b-16e-instruct', // Newest, better quality (if available)
+  '@cf/meta/llama-3-8b-instruct',             // Stable, good balance
+  '@cf/mistral/mistral-7b-instruct',          // Fallback
+];
+
+let cachedModel: string | null = null;
+
+// ponytail: lazy init, try models until one works. Cache the winner.
+async function selectModel(ai: Ai): Promise<string> {
+  if (cachedModel) return cachedModel;
+
+  for (const model of MODEL_CHAIN) {
+    try {
+      await ai.run(model, { messages: [{ role: 'user', content: 'x' }] });
+      cachedModel = model;
+      return model;
+    } catch (e) {
+      const err = String(e);
+      if (err.includes('5028') || err.includes('deprecated') || err.includes('not found')) {
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error(`No working model in ${MODEL_CHAIN.join(', ')}`);
+}
 const MAX_TURNS = 5;
 const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
 
@@ -164,6 +190,9 @@ export async function runRecipeAgent(
     }
   }
 
+  const model = await selectModel(ai);
+  console.log(JSON.stringify({ event: 'meal.model.selected', requestId, model }));
+
   const messages: any[] = [
     { role: 'system', content: systemPrompt(diet, allergies) },
     { role: 'user', content: String(body.query ?? '') },
@@ -174,7 +203,7 @@ export async function runRecipeAgent(
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     // ponytail: no response_format — tools + json_object is unreliable on this
     // model, and extractJson() is needed either way.
-    const out = await ai.run(MODEL, { messages, tools: TOOLS });
+    const out = await ai.run(model, { messages, tools: TOOLS });
     last = out;
 
     const calls: any[] = out?.tool_calls ?? [];

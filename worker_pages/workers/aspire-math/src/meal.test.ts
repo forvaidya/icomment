@@ -42,18 +42,20 @@ async function main() {
 
   // Agent loop: one tool round trip, then a final recipe.
   globalThis.fetch = off({ allergens_tags: [], ingredients_analysis_tags: ['en:vegan'] }) as any;
-  let turns = 0;
-  const ai = {
+  let loopTurns = 0;
+  const loopAi = {
     async run(_m: string, input: any) {
-      turns++;
-      if (turns === 1) return { response: '', tool_calls: [{ name: 'check_ingredient', arguments: { name: 'tofu' } }] };
+      loopTurns++;
+      // selectModel does a test call (loopTurns === 1), skip it and count real loop
+      if (loopTurns === 1) return { response: '', tool_calls: [] }; // selectModel test
+      if (loopTurns === 2) return { response: '', tool_calls: [{ name: 'check_ingredient', arguments: { name: 'tofu' } }] };
       assert.ok(input.messages.some((m: any) => m.role === 'tool'), 'tool result fed back');
       return { response: '{"title":"Tofu Bowl","description":"d","ingredients":[{"name":"tofu","amount":"200g"}],"steps":["cook"],"tags":["vegan"]}' };
     },
   };
-  const out = await runRecipeAgent(ai, { query: 'tofu dinner', diet: ['vegan'], allergies: [] }, 'test');
+  const out = await runRecipeAgent(loopAi, { query: 'tofu dinner', diet: ['vegan'], allergies: [] }, 'test1');
   assert.equal(out?.recipe.title, 'Tofu Bowl');
-  assert.equal(turns, 2);
+  assert.equal(loopTurns, 3); // test call + 2 real loop iterations
 
   // A model that only ever calls tools stops at the cap instead of spinning.
   turns = 0;
@@ -67,9 +69,18 @@ async function main() {
   globalThis.fetch = off({ allergens_tags: [], ingredients_analysis_tags: ['en:vegan'] }) as any;
   let runCount = 0;
   const aiWithCount = {
-    async run(model: string) {
-      if (model !== '@cf/mistral/mistral-7b-instruct-v0.2') throw new Error(`wrong model: ${model}`);
+    async run(model: string, input: any) {
+      const chain = [
+        '@cf/meta/llama-4-scout-17b-16e-instruct',
+        '@cf/meta/llama-3-8b-instruct',
+        '@cf/mistral/mistral-7b-instruct',
+      ];
+      if (!chain.includes(model)) throw new Error(`model not in chain: ${model}`);
       runCount++;
+      // Second call should have tool messages fed back
+      if (runCount === 2) {
+        assert.ok(input.messages.some((m: any) => m.role === 'tool'), 'tool result fed back');
+      }
       return { response: '{"title":"Tofu","description":"d","ingredients":[{"name":"tofu","amount":"200g"}],"steps":["x"],"tags":["vegan"]}' };
     },
   };
