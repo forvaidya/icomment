@@ -42,12 +42,13 @@ async function selectModel(ai: Ai): Promise<string> {
 const MAX_TURNS = 5;
 const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
 
-type Diet = 'veg' | 'non_veg' | 'vegan';
+type Diet = 'veg' | 'non_veg' | 'vegan' | null;
 
-// UI sends diet as a checkbox array, the spec says a single string. Accept both
-// and take the strictest selection.
+// UI sends diet as a checkbox array, the spec says a single string.
+// Empty array = no diet constraint. Non-empty = take strictest (vegan > veg > non_veg).
 function normalizeDiet(d: unknown): Diet {
-  const list = Array.isArray(d) ? d : [d];
+  const list = Array.isArray(d) ? d : d ? [d] : [];
+  if (list.length === 0) return null; // No diet selected = no filter
   if (list.includes('vegan')) return 'vegan';
   if (list.includes('veg')) return 'veg';
   return 'non_veg';
@@ -81,7 +82,7 @@ const TOOLS = [{
   },
 }];
 
-export async function checkIngredient(name: string, diet: Diet, allergies: string[]) {
+export async function checkIngredient(name: string, diet: Diet | null, allergies: string[]) {
   let allergens: string[];
   let is_vegan: boolean | null;
   let is_vegetarian: boolean | null;
@@ -113,8 +114,10 @@ export async function checkIngredient(name: string, diet: Diet, allergies: strin
     };
   }
 
-  const dietFlag = diet === 'vegan' ? is_vegan : diet === 'veg' ? is_vegetarian : true;
-  const hit = allergies.some((a) => (ALLERGEN_TAGS[a] ?? [a]).some((t) => allergens.includes(t)));
+  // If no diet constraint (null), accept any diet
+  const dietFlag = diet === null ? true : diet === 'vegan' ? is_vegan : diet === 'veg' ? is_vegetarian : true;
+  // If no allergies selected, no allergen filter
+  const hit = allergies.length === 0 ? false : allergies.some((a) => (ALLERGEN_TAGS[a] ?? [a]).some((t) => allergens.includes(t)));
 
   return {
     ingredient: name,
@@ -127,14 +130,18 @@ export async function checkIngredient(name: string, diet: Diet, allergies: strin
 }
 
 function systemPrompt(diet: Diet, allergies: string[]) {
-  return `You are a recipe agent. Create recipes that respect dietary restrictions.
-
-Dietary class: ${diet}
+  const dietSection = diet
+    ? `Dietary class: ${diet}
 - veg: no meat or fish, dairy and eggs OK
 - non_veg: all ingredients OK
-- vegan: no animal products (no meat, fish, dairy, eggs, honey)
+- vegan: no animal products (no meat, fish, dairy, eggs, honey)`
+    : 'No dietary restriction — all ingredients OK';
 
-Avoid allergies: ${allergies.length ? allergies.join(', ') : 'none'}
+  return `You are a recipe agent. Create recipes that respect dietary restrictions.
+
+${dietSection}
+
+Avoid allergies: ${allergies.length ? allergies.join(', ') : 'none (no allergies selected)'}
 
 RULES:
 1. Never include ingredients that conflict with diet/allergies
