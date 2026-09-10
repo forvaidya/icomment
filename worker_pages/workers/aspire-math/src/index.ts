@@ -143,7 +143,7 @@ export default {
       const startedAt = Date.now();
 
       try {
-        const body = await request.json() as { query: string; diet: unknown; allergies: unknown };
+        const body = await request.json() as { query: string; diet: unknown; allergies: unknown; sessionId?: string; feedback?: string };
 
         console.log(JSON.stringify({
           event: 'meal.request.received',
@@ -152,10 +152,12 @@ export default {
           path: url.pathname,
           hasQuery: !!body.query,
           diet: body.diet,
-          allergiesCount: Array.isArray(body.allergies) ? body.allergies.length : 0
+          allergiesCount: Array.isArray(body.allergies) ? body.allergies.length : 0,
+          hasFeedback: !!body.feedback,
+          sessionId: body.sessionId
         }));
 
-        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE);
+        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback);
         if (!result) {
           return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
         }

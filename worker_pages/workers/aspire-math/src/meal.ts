@@ -129,7 +129,7 @@ export async function checkIngredient(name: string, diet: Diet | null, allergies
   };
 }
 
-function systemPrompt(diet: Diet, allergies: string[]) {
+function systemPrompt(diet: Diet, allergies: string[], feedback?: string) {
   const dietSection = diet
     ? `Dietary class: ${diet}
 - veg: no meat or fish, dairy and eggs OK
@@ -137,11 +137,16 @@ function systemPrompt(diet: Diet, allergies: string[]) {
 - vegan: no animal products (no meat, fish, dairy, eggs, honey)`
     : 'No dietary restriction — all ingredients OK';
 
+  const feedbackSection = feedback
+    ? `\nUser Feedback: ${feedback}\nRespond to this feedback by adjusting the recipe appropriately.`
+    : '';
+
   return `You are a recipe agent. Create recipes that respect dietary restrictions.
 
 ${dietSection}
 
 Avoid allergies: ${allergies.length ? allergies.join(', ') : 'none (no allergies selected)'}
+${feedbackSection}
 
 RULES:
 1. Never include ingredients that conflict with diet/allergies
@@ -198,6 +203,8 @@ export async function runRecipeAgent(
   body: { query?: string; diet?: unknown; allergies?: unknown },
   requestId: string,
   kv?: Kv,
+  sessionId?: string,
+  feedback?: string,
 ) {
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
@@ -213,10 +220,10 @@ export async function runRecipeAgent(
   }
 
   const model = await selectModel(ai);
-  console.log(JSON.stringify({ event: 'meal.model.selected', requestId, model }));
+  console.log(JSON.stringify({ event: 'meal.model.selected', requestId, model, hasFeedback: !!feedback }));
 
   const messages: any[] = [
-    { role: 'system', content: systemPrompt(diet, allergies) },
+    { role: 'system', content: systemPrompt(diet, allergies, feedback) },
     { role: 'user', content: String(body.query ?? '') },
   ];
 
