@@ -173,17 +173,20 @@ Your response must be ONLY the JSON object, nothing else.`;
 }
 
 // The model returns JSON in prose about as often as it returns bare JSON.
+// Sometimes response is already an object, sometimes it's a string.
 export function extractJson(text: unknown): any | null {
   if (text && typeof text === 'object') return text;
   if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
   try {
-    return JSON.parse(text);
+    return JSON.parse(trimmed);
   } catch {
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
+    // Try to find JSON in the string
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
     if (start === -1 || end <= start) return null;
     try {
-      return JSON.parse(text.slice(start, end + 1));
+      return JSON.parse(trimmed.slice(start, end + 1));
     } catch {
       return null;
     }
