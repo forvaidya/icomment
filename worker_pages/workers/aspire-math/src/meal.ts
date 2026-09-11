@@ -256,8 +256,19 @@ export async function runRecipeAgent(
 
     const calls: any[] = out?.tool_calls ?? [];
     if (!calls.length) {
-      const recipe = extractJson(out?.response);
-      console.log(JSON.stringify({ event: 'meal.extract', requestId, turn, extracted: !!recipe, hasTitle: !!recipe?.title, hasIngredients: Array.isArray(recipe?.ingredients), hasSteps: Array.isArray(recipe?.steps) }));
+      const rawResponse = out?.response;
+      const recipe = extractJson(rawResponse);
+      console.log(JSON.stringify({
+        event: 'meal.extract',
+        requestId,
+        turn,
+        extracted: !!recipe,
+        responseType: typeof rawResponse,
+        responseLength: String(rawResponse).length,
+        hasTitle: !!recipe?.title,
+        hasIngredients: Array.isArray(recipe?.ingredients),
+        hasSteps: Array.isArray(recipe?.steps)
+      }));
 
       // Accept partial recipes, fill in defaults for missing fields
       if (recipe && (recipe.title || recipe.ingredients || recipe.steps)) {
