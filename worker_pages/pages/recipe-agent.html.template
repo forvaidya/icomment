@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="version" content="{{SHA1}}">
+    <title>🍲 Recipe Agent</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        #app {
+            flex: 1;
+            padding: 20px;
+        }
+
+        footer {
+            border-top: 1px solid #ddd;
+            padding: 20px;
+            background: white;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            margin-top: auto;
+            flex-shrink: 0;
+        }
+
+        footer p {
+            margin: 4px 0;
+        }
+
+        nav {
+            margin-bottom: 30px;
+        }
+
+        .recipe-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .recipe-card {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .recipe-title {
+            font-size: 28px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .checkbox-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-option input[type="checkbox"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+
+        .checkbox-option label {
+            cursor: pointer;
+            user-select: none;
+            font-size: 14px;
+        }
+
+        .submit-button {
+            width: 100%;
+            padding: 14px 20px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.2s;
+        }
+
+        .submit-button:hover:not(:disabled) {
+            background: #0052a3;
+        }
+
+        .submit-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            min-height: 40px;
+        }
+
+        .result-loading {
+            color: #666;
+            font-style: italic;
+        }
+
+        .result-error {
+            color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <nav style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <a class="nav-link" href="/">← Back to Home</a>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <label for="logLevel" style="font-size: 12px; color: #666;">Debug Level:</label>
+                <select id="logLevel" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: white; cursor: pointer;">
+                    <option value="error">Error</option>
+                    <option value="info">Info</option>
+                    <option value="debug" selected>Debug</option>
+                </select>
+            </div>
+        </nav>
+
+        <div class="recipe-container">
+        <div class="recipe-card">
+            <h1 class="recipe-title">🍲 Recipe Agent</h1>
+
+            <div class="form-group">
+                <label class="form-label" for="query">What would you like to cook?</label>
+                <textarea class="form-textarea" id="query" rows="3" placeholder="What would you like to cook?">Pasta in white sauce</textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Diet</label>
+                <div class="checkbox-grid">
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="veg" name="diet" value="veg" checked>
+                        <label for="veg">Veg</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="non_veg" name="diet" value="non_veg">
+                        <label for="non_veg">Non-Veg</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="vegan" name="diet" value="vegan">
+                        <label for="vegan">Vegan</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Allergies</label>
+                <div class="checkbox-grid">
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="peanuts" name="allergies" value="peanuts">
+                        <label for="peanuts">Peanuts</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="tree_nuts" name="allergies" value="tree_nuts">
+                        <label for="tree_nuts">Tree Nuts</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="dairy" name="allergies" value="dairy">
+                        <label for="dairy">Dairy</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="shellfish" name="allergies" value="shellfish">
+                        <label for="shellfish">Shellfish</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="eggs" name="allergies" value="eggs">
+                        <label for="eggs">Eggs</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="wheat" name="allergies" value="wheat">
+                        <label for="wheat">Wheat/Gluten</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="soy" name="allergies" value="soy">
+                        <label for="soy">Soy</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="sesame" name="allergies" value="sesame">
+                        <label for="sesame">Sesame</label>
+                    </div>
+                    <div class="checkbox-option">
+                        <input type="checkbox" id="fish" name="allergies" value="fish">
+                        <label for="fish">Fish</label>
+                    </div>
+                </div>
+            </div>
+
+            <button class="submit-button" id="generateBtn">Generate Recipe</button>
+            <div class="result-box" id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        // Log level control
+        const logLevelSelect = document.getElementById('logLevel');
+        const logLevelKey = 'recipeLogLevel';
+
+        function getLogLevel() {
+            return localStorage.getItem(logLevelKey) || 'debug';
+        }
+
+        function setLogLevel(level) {
+            localStorage.setItem(logLevelKey, level);
+            console.log(`Log level set to: ${level}`);
+        }
+
+        // Restore log level on page load
+        logLevelSelect.value = getLogLevel();
+        logLevelSelect.addEventListener('change', (e) => setLogLevel(e.target.value));
+
+        const generateBtn = document.getElementById('generateBtn');
+        const resultDiv = document.getElementById('result');
+        let currentRecipe = null;
+        let sessionId = localStorage.getItem('recipeSessionId') || crypto.randomUUID();
+        localStorage.setItem('recipeSessionId', sessionId);
+
+        function renderRecipe(recipe) {
+            if (!recipe) return '';
+            return `
+                <div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">
+                    <h3 style="margin: 0 0 10px 0; color: #333;">${recipe.title}</h3>
+                    <p style="margin: 0 0 15px 0; color: #666; font-size: 14px;">${recipe.description}</p>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #333; font-size: 14px;">Ingredients:</h4>
+                    <ul style="margin: 0 0 15px 20px; padding: 0; font-size: 13px;">
+                        ${recipe.ingredients.map(ing => `<li>${ing.name} — ${ing.amount}</li>`).join('')}
+                    </ul>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #333; font-size: 14px;">Steps:</h4>
+                    <ol style="margin: 0 0 15px 20px; padding: 0; font-size: 13px;">
+                        ${recipe.steps.map(step => `<li>${step}</li>`).join('')}
+                    </ol>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                        <button onclick="handleFeedback('love')" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">👍 Love It</button>
+                        <button onclick="handleFeedback('another')" style="padding: 8px 16px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 Try Another</button>
+                        <button onclick="showSubstituteOptions()" style="padding: 8px 16px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">🔀 Ingredient Unavailable</button>
+                    </div>
+
+                    <div id="substituteOptions" style="display: none; margin-top: 15px; padding: 15px; background: white; border-radius: 4px; border: 1px solid #ddd;">
+                        <p style="margin: 0 0 10px 0; font-weight: bold; font-size: 13px;">Which ingredient is unavailable?</p>
+                        <div id="ingredientList" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showSubstituteOptions() {
+            const options = document.getElementById('substituteOptions');
+            options.style.display = options.style.display === 'none' ? 'block' : 'none';
+
+            if (options.style.display === 'block' && currentRecipe) {
+                const ingredientList = document.getElementById('ingredientList');
+                ingredientList.innerHTML = currentRecipe.ingredients.map(ing => `
+                    <button onclick="handleFeedback('substitute', '${ing.name}')" style="padding: 6px 12px; background: #fff; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        ${ing.name}
+                    </button>
+                `).join('');
+            }
+        }
+
+        async function handleFeedback(type, ingredient = null) {
+            const query = document.getElementById('query').value;
+            const diet = Array.from(document.querySelectorAll('input[name="diet"]:checked'))
+                .map(cb => cb.value);
+            const allergies = Array.from(document.querySelectorAll('input[name="allergies"]:checked'))
+                .map(cb => cb.value);
+
+            let feedback = '';
+            if (type === 'love') {
+                alert('Great! Your recipe is ready to cook. 👨‍🍳');
+                return;
+            } else if (type === 'another') {
+                feedback = 'Try a completely different recipe for the same request.';
+            } else if (type === 'substitute') {
+                feedback = `${ingredient} is not available. Please suggest a substitute ingredient and adjust the recipe accordingly.`;
+            }
+
+            resultDiv.textContent = 'Regenerating...';
+            resultDiv.classList.add('result-loading');
+
+            try {
+                const response = await fetch('/api/meal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query,
+                        diet,
+                        allergies,
+                        sessionId,
+                        feedback,
+                        logLevel: getLogLevel()
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${data.error}</div>`;
+                    resultDiv.classList.add('result-error');
+                } else {
+                    currentRecipe = data.recipe;
+                    resultDiv.innerHTML = renderRecipe(data.recipe);
+                    resultDiv.classList.remove('result-loading', 'result-error');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${error.message}</div>`;
+                resultDiv.classList.add('result-error');
+            }
+        }
+
+        generateBtn.addEventListener('click', async () => {
+            const query = document.getElementById('query').value;
+            const diet = Array.from(document.querySelectorAll('input[name="diet"]:checked'))
+                .map(cb => cb.value);
+            const allergies = Array.from(document.querySelectorAll('input[name="allergies"]:checked'))
+                .map(cb => cb.value);
+
+            resultDiv.textContent = 'Generating...';
+            resultDiv.classList.add('result-loading');
+            generateBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/meal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, diet, allergies, sessionId, logLevel: getLogLevel() })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${data.error}</div>`;
+                    resultDiv.classList.add('result-error');
+                } else {
+                    currentRecipe = data.recipe;
+                    resultDiv.innerHTML = renderRecipe(data.recipe);
+                    resultDiv.classList.remove('result-loading', 'result-error');
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${error.message}</div>`;
+                resultDiv.classList.add('result-error');
+            } finally {
+                generateBtn.disabled = false;
+            }
+        });
+    </script>
+    </div>
+
+    <footer>
+        <p>🍲 Recipe Agent | Powered by Cloudflare Workers AI</p>
+        <p style="margin-top: 8px; font-size: 11px;">© 2026 icomment. Built with Workers + Pages. | <span id="version-info"></span></p>
+    </footer>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const versionMeta = document.querySelector('meta[name="version"]');
+            const versionInfo = document.getElementById('version-info');
+            if (versionMeta && versionInfo) {
+                versionInfo.textContent = `Version: ${versionMeta.content}`;
+            }
+        });
+    </script>
+</body>
+</html>

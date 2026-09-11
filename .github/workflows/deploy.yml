@@ -11,15 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Update git SHA in pages
-        run: cd worker_pages/pages && ./update-version.sh
-
-      - name: Commit SHA updates
+      - name: Generate HTML from templates with SHA1
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add worker_pages/pages/index.html worker_pages/pages/recipe-agent.html
-          git commit -m "chore: auto-update git SHA before deploy" || true
+          SHA1=$(git rev-parse HEAD | cut -c1-8)
+          cd worker_pages/pages
+          sed "s/{{SHA1}}/$SHA1/g" index.html.template > index.html
+          sed "s/{{SHA1}}/$SHA1/g" recipe-agent.html.template > recipe-agent.html
+          echo "Generated files with SHA1: $SHA1"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,5 +32,3 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Push SHA commit if created
-        run: git push || true
