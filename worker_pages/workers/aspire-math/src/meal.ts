@@ -193,8 +193,16 @@ export function extractJson(text: unknown): any | null {
   }
 }
 
-// Workers AI emits { name, arguments }; OpenAI-style is { function: { name, arguments } }.
+// Handle multiple tool call formats:
+// 1. { name, arguments }
+// 2. { function: { name, arguments } }
+// 3. { function: "name", parameters: {...} } (direct format)
 function toolCallOf(call: any): { name: string; args: any } {
+  if (call.function && typeof call.function === 'string') {
+    // Format 3: direct function name + parameters
+    return { name: call.function, args: call.parameters ?? {} };
+  }
+  // Formats 1 & 2: nested or flat
   const fn = call.function ?? call;
   const raw = fn.arguments ?? {};
   return { name: fn.name, args: typeof raw === 'string' ? extractJson(raw) ?? {} : raw };
@@ -254,7 +262,13 @@ export async function runRecipeAgent(
       throw e;
     }
 
-    const calls: any[] = out?.tool_calls ?? [];
+    // Handle both formats: { tool_calls: [...] } and direct array [...]
+    let calls: any[] = out?.tool_calls ?? [];
+    if (!calls.length && Array.isArray(out?.response)) {
+      // Model returned tool calls as array directly
+      calls = extractJson(out.response) || [];
+    }
+
     if (!calls.length) {
       const rawResponse = out?.response;
       const recipe = extractJson(rawResponse);
