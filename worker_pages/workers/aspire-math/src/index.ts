@@ -45,6 +45,14 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === '/api/deployment-info') {
+      return Response.json({
+        sha1: '{{SHA1}}',
+        deployedAt: '{{DEPLOYED_AT}}',
+        service: 'aspire-math-worker'
+      }, { headers: { 'Content-Type': 'application/json' } });
+    }
+
     if (url.pathname === '/multiply') {
       const requestId = crypto.randomUUID();
       const startedAt = Date.now();

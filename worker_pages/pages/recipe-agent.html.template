@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="version" content="{{SHA1}}">
+    <meta name="deployed-at" content="{{DEPLOYED_AT}}">
     <title>🍲 Recipe Agent</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
@@ -400,11 +401,24 @@
         <p style="margin-top: 8px; font-size: 11px;">© 2026 icomment. Built with Workers + Pages. | <span id="version-info"></span></p>
     </footer>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const versionMeta = document.querySelector('meta[name="version"]');
             const versionInfo = document.getElementById('version-info');
-            if (versionMeta && versionInfo) {
-                versionInfo.textContent = `Version: ${versionMeta.content}`;
+            if (versionInfo) {
+                let info = '';
+                if (versionMeta) info += `SHA1: ${versionMeta.content}`;
+
+                try {
+                    const res = await fetch('/api/deployment-info');
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (info) info += ' | ';
+                        info += `Worker: ${data.sha1}`;
+                    }
+                } catch (e) {
+                    console.log('Could not fetch deployment info');
+                }
+                versionInfo.textContent = info;
             }
         });
     </script>

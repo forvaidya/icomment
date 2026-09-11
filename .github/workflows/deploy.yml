@@ -16,21 +16,24 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Generate HTML from templates with SHA1
+      - name: Generate HTML from templates with SHA1 and timestamp
         run: |
           SHA1=$(git rev-parse HEAD | cut -c1-8)
+          DEPLOYED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           cd worker_pages/pages
-          sed "s/{{SHA1}}/$SHA1/g" index.html.template > index.html
-          sed "s/{{SHA1}}/$SHA1/g" recipe-agent.html.template > recipe-agent.html
-          echo "Generated files with SHA1: $SHA1"
+          sed -e "s/{{SHA1}}/$SHA1/g" -e "s/{{DEPLOYED_AT}}/$DEPLOYED_AT/g" index.html.template > index.html
+          sed -e "s/{{SHA1}}/$SHA1/g" -e "s/{{DEPLOYED_AT}}/$DEPLOYED_AT/g" recipe-agent.html.template > recipe-agent.html
+          echo "Generated files with SHA1: $SHA1, Deployed at: $DEPLOYED_AT"
 
-      - name: Verify SHA1 injection
+      - name: Verify SHA1 and timestamp injection
         run: |
           SHA1=$(git rev-parse HEAD | cut -c1-8)
           cd worker_pages/pages
-          echo "Verifying SHA1 injection..."
+          echo "Verifying injection..."
           grep -q "version.*$SHA1" index.html && echo "✓ index.html: SHA1 $SHA1 found"
           grep -q "version.*$SHA1" recipe-agent.html && echo "✓ recipe-agent.html: SHA1 $SHA1 found"
+          grep -q "deployed-at" index.html && echo "✓ index.html: deployment timestamp found"
+          grep -q "deployed-at" recipe-agent.html && echo "✓ recipe-agent.html: deployment timestamp found"
 
       - name: Install dependencies
         run: cd worker_pages/workers/aspire-math && npm install
