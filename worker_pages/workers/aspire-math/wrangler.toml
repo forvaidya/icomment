@@ -2,6 +2,7 @@ name = "aspire-math"
 main = "src/index.ts"
 compatibility_date = "2026-08-30"
 workers_dev = false
+account_id = "fd13bf6b366f66d013202fb0188b9840"
 
 [ai]
 binding = "AI"
