@@ -1,0 +1,37 @@
+name: Deploy Worker & Pages
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update git SHA in pages
+        run: cd worker_pages/pages && ./update-version.sh
+
+      - name: Commit SHA updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add worker_pages/pages/index.html worker_pages/pages/recipe-agent.html
+          git commit -m "chore: auto-update git SHA before deploy" || true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: cd worker_pages/workers/aspire-math && npm install
+
+      - name: Deploy Worker
+        run: cd worker_pages/workers/aspire-math && wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Push SHA commit if created
+        run: git push || true
