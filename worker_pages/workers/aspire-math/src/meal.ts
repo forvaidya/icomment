@@ -197,14 +197,15 @@ export function extractJson(text: unknown): any | null {
 // 1. { name, arguments }
 // 2. { function: { name, arguments } }
 // 3. { function: "name", parameters: {...} } (direct format)
+// 4. { function: { name, parameters } } (nested with parameters key)
 function toolCallOf(call: any): { name: string; args: any } {
   if (call.function && typeof call.function === 'string') {
     // Format 3: direct function name + parameters
     return { name: call.function, args: call.parameters ?? {} };
   }
-  // Formats 1 & 2: nested or flat
+  // Formats 1, 2 & 4: nested or flat
   const fn = call.function ?? call;
-  const raw = fn.arguments ?? {};
+  const raw = fn.arguments ?? fn.parameters ?? {};
   return { name: fn.name, args: typeof raw === 'string' ? extractJson(raw) ?? {} : raw };
 }
 
@@ -312,9 +313,14 @@ export async function runRecipeAgent(
 
     // Handle both formats: { tool_calls: [...] } and direct array [...]
     let calls: any[] = out?.tool_calls ?? [];
-    if (!calls.length && Array.isArray(out?.response)) {
-      // Model returned tool calls as array directly
-      calls = extractJson(out.response) || [];
+    if (!calls.length) {
+      // Model might return tool calls as array (as string or object)
+      if (Array.isArray(out?.response)) {
+        calls = out.response;
+      } else if (typeof out?.response === 'string') {
+        const parsed = extractJson(out.response);
+        if (Array.isArray(parsed)) calls = parsed;
+      }
     }
 
     if (!calls.length) {
