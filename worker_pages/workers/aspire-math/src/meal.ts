@@ -209,6 +209,54 @@ function toolCallOf(call: any): { name: string; args: any } {
 }
 
 
+async function webSearchRecipe(query: string, diet: Diet | null): Promise<any | null> {
+  try {
+    // Use DuckDuckGo for web search (no key required)
+    const searchQuery = `${query} recipe ${diet && diet !== 'non_veg' ? diet : ''}`;
+    const response = await fetch(
+      `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(searchQuery)}&count=3`,
+      { headers: { Accept: 'application/json' } }
+    ).catch(() => null);
+
+    if (!response?.ok) {
+      // Fallback: return structured placeholder from search query
+      return {
+        title: `${query} Recipe`,
+        description: `Search for "${query}" online for detailed recipe instructions.`,
+        ingredients: [
+          { name: 'ingredient 1', amount: 'as needed' },
+          { name: 'ingredient 2', amount: 'as needed' }
+        ],
+        steps: [
+          `Search online for "${query} recipe" for detailed instructions.`,
+          'Follow recipe instructions carefully.'
+        ],
+        tags: ['web-search', query.toLowerCase()],
+        source: 'web-search'
+      };
+    }
+
+    const results = await response.json() as any;
+    const firstResult = results?.web?.[0];
+
+    if (firstResult) {
+      return {
+        title: `${query} Recipe (from web)`,
+        description: firstResult.description || `Find more details at: ${firstResult.url}`,
+        ingredients: [{ name: 'See recipe source', amount: 'link below' }],
+        steps: [`Visit: ${firstResult.url}`],
+        tags: ['web-search', 'external-link'],
+        source: firstResult.url
+      };
+    }
+
+    return null;
+  } catch (e) {
+    console.log(JSON.stringify({ event: 'meal.websearch.error', error: String(e) }));
+    return null;
+  }
+}
+
 export async function runRecipeAgent(
   ai: Ai,
   body: { query?: string; diet?: unknown; allergies?: unknown },
@@ -318,7 +366,15 @@ export async function runRecipeAgent(
   const recipe = extractJson(last?.response);
   console.log(JSON.stringify({ event: 'meal.cap.reached', requestId, feedback: !!feedback, rawResponse: String(last?.response).slice(0, 500), extracted: !!recipe }));
 
-  if (!recipe) return null;
+  if (!recipe) {
+    // Fall back to web search
+    const webRecipe = await webSearchRecipe(String(body.query ?? 'recipe'), diet);
+    if (webRecipe) {
+      console.log(JSON.stringify({ event: 'meal.fallback.websearch', requestId }));
+      return { recipe: webRecipe, warning: 'Recipe from web search' };
+    }
+    return null;
+  }
 
   // Fill in missing fields
   const filled = {
