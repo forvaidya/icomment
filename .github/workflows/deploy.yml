@@ -38,15 +38,6 @@ jobs:
       - name: Install dependencies
         run: cd worker_pages/workers/aspire-math && npm install
 
-      - name: Commit and push generated HTML for Pages deployment
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          cd worker_pages/pages
-          git add -f index.html recipe-agent.html
-          git commit -m "chore: regenerate HTML with SHA1 $(git rev-parse HEAD | cut -c1-8) [skip ci]" || echo "No changes to commit"
-          git push
-
       - name: Deploy Worker with SHA1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
