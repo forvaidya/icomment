@@ -371,7 +371,12 @@ export async function runRecipeAgent(
     const webRecipe = await webSearchRecipe(String(body.query ?? 'recipe'), diet);
     if (webRecipe) {
       console.log(JSON.stringify({ event: 'meal.fallback.websearch', requestId }));
-      return { recipe: webRecipe, warning: 'Recipe from web search' };
+      const result = { recipe: webRecipe, source: 'web-search' };
+      if (kv) {
+        await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
+        console.log(JSON.stringify({ event: 'meal.cache.store.websearch', requestId, key }));
+      }
+      return result;
     }
     return null;
   }
