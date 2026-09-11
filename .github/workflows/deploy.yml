@@ -39,10 +39,11 @@ jobs:
         run: cd worker_pages/workers/aspire-math && npm install
 
       - name: Deploy Worker with SHA1
-        run: |
-          SHA1=$(git rev-parse HEAD | cut -c1-8)
-          cd worker_pages/workers/aspire-math
-          npx wrangler deploy --define DEPLOYMENT_SHA="$SHA1"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          SHA1=$(git rev-parse HEAD | cut -c1-8)
+          export DEPLOYMENT_SHA="$SHA1"
+          cd worker_pages/workers/aspire-math
+          npx wrangler deploy
 
