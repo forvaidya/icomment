@@ -8,6 +8,7 @@ interface Env {
   LAPTOP_BACKEND_MTLS: Fetcher;
   AI: Ai;
   RECIPE_CACHE?: Kv;
+  DEPLOYMENT_SHA?: string;
 }
 
 let circuitState = { failures: 0, lastFailure: 0, isOpen: false };
@@ -47,8 +48,7 @@ export default {
 
     if (url.pathname === '/api/deployment-info') {
       return Response.json({
-        sha1: '{{SHA1}}',
-        deployedAt: '{{DEPLOYED_AT}}',
+        sha1: env.DEPLOYMENT_SHA || 'unknown',
         service: 'aspire-math-worker'
       }, { headers: { 'Content-Type': 'application/json' } });
     }
