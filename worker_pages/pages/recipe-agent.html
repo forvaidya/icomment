@@ -25,8 +25,16 @@
     </style>
 </head>
 <body>
-    <nav>
+    <nav style="display: flex; justify-content: space-between; align-items: center;">
         <a class="nav-link" href="/">← Back to Home</a>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <label for="logLevel" style="font-size: 12px; color: #666;">Debug Level:</label>
+            <select id="logLevel" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; background: white; cursor: pointer;">
+                <option value="error">Error</option>
+                <option value="info">Info</option>
+                <option value="debug" selected>Debug</option>
+            </select>
+        </div>
     </nav>
 
     <div class="recipe-container">
@@ -104,6 +112,23 @@
     </div>
 
     <script>
+        // Log level control
+        const logLevelSelect = document.getElementById('logLevel');
+        const logLevelKey = 'recipeLogLevel';
+
+        function getLogLevel() {
+            return localStorage.getItem(logLevelKey) || 'debug';
+        }
+
+        function setLogLevel(level) {
+            localStorage.setItem(logLevelKey, level);
+            console.log(`Log level set to: ${level}`);
+        }
+
+        // Restore log level on page load
+        logLevelSelect.value = getLogLevel();
+        logLevelSelect.addEventListener('change', (e) => setLogLevel(e.target.value));
+
         const generateBtn = document.getElementById('generateBtn');
         const resultDiv = document.getElementById('result');
         let currentRecipe = null;
@@ -185,7 +210,8 @@
                         diet,
                         allergies,
                         sessionId,
-                        feedback
+                        feedback,
+                        logLevel: getLogLevel()
                     })
                 });
 
@@ -219,7 +245,7 @@
                 const response = await fetch('/api/meal', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, diet, allergies, sessionId })
+                    body: JSON.stringify({ query, diet, allergies, sessionId, logLevel: getLogLevel() })
                 });
 
                 const data = await response.json();

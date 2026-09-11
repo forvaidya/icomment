@@ -135,29 +135,35 @@ export default {
     }
 
     if (url.pathname === '/meal') {
+      console.error('MEAL HANDLER CALLED');
       if (request.method !== 'POST') {
         return Response.json({ error: 'Only POST allowed' }, { status: 405 });
       }
 
       const requestId = crypto.randomUUID();
       const startedAt = Date.now();
+      console.error(`MEAL START: ${requestId}`);
 
       try {
-        const body = await request.json() as { query: string; diet: unknown; allergies: unknown; sessionId?: string; feedback?: string };
+        const body = await request.json() as { query: string; diet: unknown; allergies: unknown; sessionId?: string; feedback?: string; logLevel?: string };
+        const logLevel = body.logLevel || 'debug';
+        const shouldLog = (level: string) => {
+          const levels = ['error', 'info', 'debug'];
+          return levels.indexOf(level) <= levels.indexOf(logLevel);
+        };
 
-        console.log(JSON.stringify({
-          event: 'meal.request.received',
-          requestId,
-          method: request.method,
-          path: url.pathname,
-          hasQuery: !!body.query,
-          diet: body.diet,
-          allergiesCount: Array.isArray(body.allergies) ? body.allergies.length : 0,
-          hasFeedback: !!body.feedback,
-          sessionId: body.sessionId
-        }));
+        if (shouldLog('info')) {
+          console.log(JSON.stringify({
+            event: 'meal.request.received',
+            requestId,
+            method: request.method,
+            path: url.pathname,
+            logLevel,
+            hasQuery: !!body.query,
+          }));
+        }
 
-        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback);
+        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel);
         if (!result) {
           return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
         }
