@@ -205,12 +205,8 @@ export async function runRecipeAgent(
   kv?: Kv,
   sessionId?: string,
   feedback?: string,
-  logLevel: string = 'debug',
+  logLevel?: string,
 ) {
-  const shouldLog = (level: string) => {
-    const levels = ['error', 'info', 'debug'];
-    return levels.indexOf(level) <= levels.indexOf(logLevel);
-  };
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
 
