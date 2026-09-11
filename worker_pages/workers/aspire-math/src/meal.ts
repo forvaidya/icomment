@@ -219,23 +219,35 @@ export async function runRecipeAgent(
     }
   }
 
-  const model = await selectModel(ai);
-  console.log(JSON.stringify({ event: 'meal.model.selected', requestId, model, hasFeedback: !!feedback }));
-
+  let model: string;
+  try {
+    model = await selectModel(ai);
+    console.log(JSON.stringify({ event: 'meal.model.selected', requestId, model, hasFeedback: !!feedback }));
+  } catch (e) {
+    console.log(JSON.stringify({ event: 'meal.model.select.failed', requestId, error: String(e) }));
+    return null;
+  }
   const messages: any[] = [
     { role: 'system', content: systemPrompt(diet, allergies, feedback) },
     { role: 'user', content: String(body.query ?? '') },
   ];
 
+  console.log(JSON.stringify({ event: 'meal.start', requestId, diet, allergiesCount: allergies.length, queryLength: String(body.query).length }));
+
   let last: any = null;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    // ponytail: no response_format — tools + json_object is unreliable on this
-    // model, and extractJson() is needed either way.
-    const out = await ai.run(model, { messages, tools: TOOLS });
-    last = out;
+    try {
+      // ponytail: no response_format — tools + json_object is unreliable on this
+      // model, and extractJson() is needed either way.
+      const out = await ai.run(model, { messages, tools: TOOLS });
+      last = out;
 
-    console.log(JSON.stringify({ event: 'meal.turn', requestId, turn, hasToolCalls: !!out?.tool_calls?.length, responseLength: String(out?.response).length, rawResponse: String(out?.response).slice(0, 300) }));
+      console.log(JSON.stringify({ event: 'meal.turn', requestId, turn, hasToolCalls: !!out?.tool_calls?.length, responseLength: String(out?.response).length, rawResponse: String(out?.response).slice(0, 300) }));
+    } catch (e) {
+      console.log(JSON.stringify({ event: 'meal.turn.error', requestId, turn, error: String(e) }));
+      throw e;
+    }
 
     const calls: any[] = out?.tool_calls ?? [];
     if (!calls.length) {
