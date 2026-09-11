@@ -181,10 +181,14 @@ export function extractJson(text: unknown): any | null {
   try {
     return JSON.parse(trimmed);
   } catch {
-    // Try to find JSON in the string
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start === -1 || end <= start) return null;
+    // Try to find JSON in the string (object or array)
+    const objStart = trimmed.indexOf('{');
+    const arrStart = trimmed.indexOf('[');
+    const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
+    if (start === -1) return null;
+
+    const end = trimmed.startsWith('[', start) ? trimmed.lastIndexOf(']') : trimmed.lastIndexOf('}');
+    if (end <= start) return null;
     try {
       return JSON.parse(trimmed.slice(start, end + 1));
     } catch {
