@@ -400,10 +400,13 @@
         <p style="margin-top: 8px; font-size: 11px;">© 2026 icomment. Built with Workers + Pages. | <span id="version-info"></span></p>
     </footer>
     <script>
-        const versionMeta = document.querySelector('meta[name="version"]');
-        if (versionMeta) {
-            document.getElementById('version-info').textContent = `Version: ${versionMeta.content}`;
-        }
+        document.addEventListener('DOMContentLoaded', () => {
+            const versionMeta = document.querySelector('meta[name="version"]');
+            const versionInfo = document.getElementById('version-info');
+            if (versionMeta && versionInfo) {
+                versionInfo.textContent = `Version: ${versionMeta.content}`;
+            }
+        });
     </script>
 </body>
 </html>
