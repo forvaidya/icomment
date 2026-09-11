@@ -397,8 +397,8 @@
     </div>
 
     <footer>
-        <p>🍲 Recipe Agent | Powered by Cloudflare Workers AI</p>
-        <p style="margin-top: 8px; font-size: 11px;">© 2026 icomment. Built with Workers + Pages. | <span id="version-info"></span></p>
+        <p>🍲 icomment | Powered by Cloudflare Workers + Pages</p>
+        <p style="margin-top: 8px; font-size: 11px;">© 2026 icomment. <span id="version-info"></span></p>
     </footer>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {

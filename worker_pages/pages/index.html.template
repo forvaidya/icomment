@@ -208,9 +208,8 @@
     initCalculator('multiply-form', 'multiply');
   </script>
   <footer>
-    © 2026 icomment. Built with Workers + Pages. | <span id="version-info"></span>
-    <br>
-    <a href="/" style="font-size: 0.75rem;">Home</a> | <a href="/recipe-agent.html" style="font-size: 0.75rem;">Recipe Agent</a>
+    <p>🍲 icomment | Powered by Cloudflare Workers + Pages</p>
+    <p style="margin-top: 8px; font-size: 11px;">© 2026 icomment. <span id="version-info"></span></p>
   </footer>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
