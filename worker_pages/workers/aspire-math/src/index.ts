@@ -152,16 +152,16 @@ export default {
           return levels.indexOf(level) <= levels.indexOf(logLevel);
         };
 
-        if (shouldLog('info')) {
-          console.log(JSON.stringify({
-            event: 'meal.request.received',
-            requestId,
-            method: request.method,
-            path: url.pathname,
-            logLevel,
-            hasQuery: !!body.query,
-          }));
-        }
+        console.log(JSON.stringify({
+          event: 'meal.request.payload',
+          requestId,
+          query: body.query,
+          diet: body.diet,
+          allergies: body.allergies,
+          sessionId: body.sessionId,
+          hasFeedback: !!body.feedback,
+          logLevel
+        }));
 
         const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel);
         if (!result) {

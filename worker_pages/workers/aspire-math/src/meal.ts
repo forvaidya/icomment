@@ -327,6 +327,7 @@ export async function runRecipeAgent(
         extracted: !!recipe,
         responseType: typeof rawResponse,
         responseLength: String(rawResponse).length,
+        responsePreview: String(rawResponse).slice(0, 200),
         hasTitle: !!recipe?.title,
         hasIngredients: Array.isArray(recipe?.ingredients),
         hasSteps: Array.isArray(recipe?.steps)
