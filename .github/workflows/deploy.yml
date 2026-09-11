@@ -42,7 +42,7 @@ jobs:
         run: |
           SHA1=$(git rev-parse HEAD | cut -c1-8)
           cd worker_pages/workers/aspire-math
-          npx wrangler deploy --define DEPLOYMENT_SHA:string="$SHA1"
+          npx wrangler deploy --define DEPLOYMENT_SHA="$SHA1"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
