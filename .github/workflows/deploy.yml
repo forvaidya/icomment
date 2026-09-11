@@ -19,6 +19,14 @@ jobs:
           sed "s/{{SHA1}}/$SHA1/g" recipe-agent.html.template > recipe-agent.html
           echo "Generated files with SHA1: $SHA1"
 
+      - name: Verify SHA1 injection
+        run: |
+          SHA1=$(git rev-parse HEAD | cut -c1-8)
+          cd worker_pages/pages
+          echo "Verifying SHA1 injection..."
+          grep -q "version.*$SHA1" index.html && echo "✓ index.html: SHA1 $SHA1 found"
+          grep -q "version.*$SHA1" recipe-agent.html && echo "✓ recipe-agent.html: SHA1 $SHA1 found"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
