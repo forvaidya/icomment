@@ -9,7 +9,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4
 
       - name: Update git SHA in pages
         run: cd worker_pages/pages && ./update-version.sh
