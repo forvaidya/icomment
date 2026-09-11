@@ -9,7 +9,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.1.1
+        with:
+          node-version: '22'
 
       - name: Generate HTML from templates with SHA1
         run: |
@@ -26,11 +31,6 @@ jobs:
           echo "Verifying SHA1 injection..."
           grep -q "version.*$SHA1" index.html && echo "✓ index.html: SHA1 $SHA1 found"
           grep -q "version.*$SHA1" recipe-agent.html && echo "✓ recipe-agent.html: SHA1 $SHA1 found"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
 
       - name: Install dependencies
         run: cd worker_pages/workers/aspire-math && npm install
