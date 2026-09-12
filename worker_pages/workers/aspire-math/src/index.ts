@@ -69,6 +69,10 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    // Log CF Access email at entry point
+    const cfEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+    console.log(JSON.stringify({ event: 'worker_entry', path: url.pathname, cfEmail, hasHeader: !!cfEmail }));
+
     if (url.pathname === '/api/deployment-info') {
       return Response.json({
         sha1: env.DEPLOYMENT_SHA || 'unknown',
@@ -220,9 +224,12 @@ export default {
     }
 
     if (url.pathname === '/api/me') {
-      // Return current user info (from CF Access headers)
+      // Extract CF Access email header (set by Pages auth)
       const userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
       const userId = userEmail || 'anonymous';
+
+      console.log(JSON.stringify({ event: 'api_me', userEmail, userId, headerReceived: !!userEmail }));
+
       return Response.json({ userEmail: userEmail || null, userId }, { status: 200 });
     }
 
@@ -242,6 +249,7 @@ export default {
 
       // Try CF Access header first (Cloudflare Access/Pages Auth)
       userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+      console.log(JSON.stringify({ event: 'meal_headers', cfEmail: userEmail, hasHeader: !!userEmail }));
       if (userEmail) {
         userId = userEmail;
       }
