@@ -149,6 +149,49 @@
         .result-error {
             color: #d32f2f;
         }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 16px 20px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            max-width: 400px;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .toast.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(450px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(450px);
+                opacity: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -250,6 +293,19 @@
     </div>
 
     <script>
+        // Toast notification
+        function showToast(message, type = 'error') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-in forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
         // Log level control
         const logLevelSelect = document.getElementById('logLevel');
         const logLevelKey = 'recipeLogLevel';
@@ -357,16 +413,16 @@
 
                 const data = await response.json();
                 if (!response.ok) {
-                    resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${data.error}</div>`;
-                    resultDiv.classList.add('result-error');
+                    showToast(data.error, 'error');
+                    resultDiv.textContent = '';
                 } else {
                     currentRecipe = data.recipe;
                     resultDiv.innerHTML = renderRecipe(data.recipe);
                     resultDiv.classList.remove('result-loading', 'result-error');
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${error.message}</div>`;
-                resultDiv.classList.add('result-error');
+                showToast(`Error: ${error.message}`, 'error');
+                resultDiv.textContent = '';
             }
         }
 
@@ -430,16 +486,16 @@
 
                 const data = await response.json();
                 if (!response.ok) {
-                    resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${data.error}</div>`;
-                    resultDiv.classList.add('result-error');
+                    showToast(data.error, 'error');
+                    resultDiv.textContent = '';
                 } else {
                     currentRecipe = data.recipe;
                     resultDiv.innerHTML = renderRecipe(data.recipe);
                     resultDiv.classList.remove('result-loading', 'result-error');
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<div style="color: #d32f2f; padding: 10px;">Error: ${error.message}</div>`;
-                resultDiv.classList.add('result-error');
+                showToast(`Error: ${error.message}`, 'error');
+                resultDiv.textContent = '';
             } finally {
                 generateBtn.disabled = false;
             }
