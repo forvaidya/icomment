@@ -271,7 +271,7 @@ export async function runRecipeAgent(
   feedback?: string,
   logLevel?: string,
 ) {
-  console.error('super-modak-testing: version loaded');
+  console.error('super-modak-testing: version-1 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
 
@@ -343,7 +343,9 @@ export async function runRecipeAgent(
         const arrayEnd = responseStr.lastIndexOf(']');
         const objStart = responseStr.indexOf('{', arrayEnd);
         if (objStart !== -1) {
-          recipe = extractJson(responseStr.slice(objStart));
+          const sliced = responseStr.slice(objStart);
+          recipe = extractJson(sliced);
+          console.error(JSON.stringify({ event: 'meal.extract.debug', requestId, turn, slicedLen: sliced.length, recipeNull: recipe === null, recipeType: typeof recipe }));
         } else {
           recipe = null;
         }
