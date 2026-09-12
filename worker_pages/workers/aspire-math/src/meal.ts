@@ -335,7 +335,16 @@ export async function runRecipeAgent(
 
     if (!calls.length) {
       const rawResponse = out?.response;
-      const recipe = extractJson(rawResponse);
+      // Handle responses with multiple JSON objects (e.g., tool calls array followed by recipe object)
+      let recipe = extractJson(rawResponse);
+      if (!recipe || Array.isArray(recipe)) {
+        // If first extraction is array or failed, try to find object recipe in the string
+        const objStart = String(rawResponse).indexOf('{');
+        if (objStart !== -1) {
+          const objStr = String(rawResponse).slice(objStart);
+          recipe = extractJson(objStr);
+        }
+      }
       console.log(JSON.stringify({
         event: 'meal.extract',
         requestId,
