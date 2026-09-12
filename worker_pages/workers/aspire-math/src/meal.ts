@@ -414,7 +414,12 @@ export async function runRecipeAgent(
       continue;
     }
 
-    messages.push({ role: 'assistant', content: out.response ?? '', tool_calls: calls });
+    const assistantMsg: any = { role: 'assistant', tool_calls: calls };
+    if (out.response?.trim()) {
+      assistantMsg.content = [{ type: 'text', text: out.response }];
+    }
+    messages.push(assistantMsg);
+
     for (const call of calls) {
       const { name, args } = toolCallOf(call);
       const result = name === 'check_ingredient'
