@@ -316,23 +316,28 @@
         // Extract and display user from JWT
         function getUserFromJWT() {
             try {
-                // Check cookie
+                // Parse all cookies
                 const cookies = document.cookie.split(';').reduce((acc, cookie) => {
                     const [key, value] = cookie.trim().split('=');
-                    acc[key] = decodeURIComponent(value);
+                    if (key) acc[key] = decodeURIComponent(value);
                     return acc;
                 }, {});
 
-                if (cookies.auth || cookies.jwt) {
-                    const token = cookies.auth || cookies.jwt;
+                // Debug: log all cookies
+                console.log('Available cookies:', Object.keys(cookies));
+
+                // Try auth, jwt, Authorization, token
+                const token = cookies.auth || cookies.jwt || cookies.Authorization || cookies.token;
+                if (token) {
                     const parts = token.split('.');
                     if (parts.length === 3) {
                         const payload = JSON.parse(atob(parts[1]));
+                        console.log('JWT payload:', payload);
                         return payload.email || payload.sub || payload.userId;
                     }
                 }
             } catch (e) {
-                // Silently fail if JWT parsing fails
+                console.log('JWT extraction error:', e);
             }
             return null;
         }
