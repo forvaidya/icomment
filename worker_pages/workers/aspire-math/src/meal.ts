@@ -220,6 +220,21 @@ function toolCallOf(call: any): { name: string; args: any } {
   return { name: fn.name, args: typeof raw === 'string' ? extractJson(raw) ?? {} : raw };
 }
 
+function normalizeToolCalls(calls: any[]): any[] {
+  return calls.map((call, idx) => {
+    const fn = call.function ?? call;
+    const params = fn.parameters ?? {};
+    return {
+      type: 'function',
+      id: `call_${idx}_${Date.now()}`,
+      function: {
+        name: fn.name,
+        arguments: JSON.stringify(params)
+      }
+    };
+  });
+}
+
 
 async function webSearchRecipe(query: string, diet: Diet | null): Promise<any | null> {
   try {
@@ -336,6 +351,11 @@ export async function runRecipeAgent(
           calls = parsed;
         }
       }
+    }
+
+    // Transform extracted tool calls to proper API format
+    if (calls.length && !calls[0].type) {
+      calls = normalizeToolCalls(calls);
     }
 
     if (!calls.length) {
