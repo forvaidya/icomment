@@ -109,6 +109,16 @@ const MEAT_KEYWORDS = [
   'seafood', 'meat', 'steak', 'bacon', 'ham', 'sausage'
 ];
 
+// Religious/cultural exclusions
+const RELIGION_EXCLUSIONS: Record<string, string[]> = {
+  hindu: ['beef'],
+  muslim: ['pork', 'bacon', 'ham'],
+  jewish: ['pork', 'shellfish', 'shrimp', 'crab', 'lobster', 'oyster', 'clam', 'mussel'],
+  jain: ['root vegetables', 'onion', 'garlic', 'potato'],
+  buddhist: [], // Prefer veg but no hard exclusions
+  christian: [],
+};
+
 function detectDietConflict(query: string, diet: Diet): string | null {
   if (!diet || diet === 'non_veg') return null; // No conflict if non_veg or no diet
   const queryLower = String(query).toLowerCase();
@@ -116,6 +126,17 @@ function detectDietConflict(query: string, diet: Diet): string | null {
   if (conflict) {
     const dietLabel = diet === 'vegan' ? 'vegan' : 'vegetarian';
     return `⚠️ "${conflict}" is a meat/fish (non-vegetarian), but you selected ${dietLabel} diet. Generated ${dietLabel} recipe instead.`;
+  }
+  return null;
+}
+
+function detectReligionConflict(query: string, religion: string | null): string | null {
+  if (!religion || !RELIGION_EXCLUSIONS[religion]) return null;
+  const queryLower = String(query).toLowerCase();
+  const exclusions = RELIGION_EXCLUSIONS[religion];
+  const conflict = exclusions.find(item => queryLower.includes(item));
+  if (conflict) {
+    return `${conflict} violates ${religion} dietary restrictions`;
   }
   return null;
 }
@@ -369,7 +390,7 @@ async function logSearchToDb(db: any, userId: string, query: string, diet: Diet,
 
 export async function runRecipeAgent(
   ai: Ai,
-  body: { query?: string; diet?: unknown; allergies?: unknown },
+  body: { query?: string; diet?: unknown; allergies?: unknown; religion?: string },
   requestId: string,
   kv?: Kv,
   sessionId?: string,
@@ -381,16 +402,24 @@ export async function runRecipeAgent(
   console.error('super-modak-testing: version-5 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
+  const religion = body.religion || null;
 
   // Log search to D1 if userId available
   if (userId && db) {
     await logSearchToDb(db, userId, String(body.query ?? 'recipe'), diet, allergies);
   }
 
-  // Check for diet conflicts (e.g., "chicken" query with "veg" diet)
+  // Check for diet conflicts (e.g., "chicken" query with "veg" diet) - PRIORITY
   const dietConflict = detectDietConflict(String(body.query ?? ''), diet);
   if (dietConflict) {
     console.log(JSON.stringify({ event: 'meal.diet.conflict.rejected', requestId, query: body.query, diet, conflict: dietConflict }));
+    return null; // Reject inconsistent input
+  }
+
+  // Check for religious conflicts (e.g., "pork" query for Muslim)
+  const religionConflict = detectReligionConflict(String(body.query ?? ''), religion);
+  if (religionConflict) {
+    console.log(JSON.stringify({ event: 'meal.religion.conflict.rejected', requestId, query: body.query, religion, conflict: religionConflict }));
     return null; // Reject inconsistent input
   }
 

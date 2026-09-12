@@ -272,19 +272,42 @@ export default {
 
         const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel, env.DB, userId);
         if (!result) {
-          // Check if it was a diet conflict
+          // Check if it was a diet conflict or religious conflict
           const queryLower = String(body.query ?? '').toLowerCase();
           const dietRadio = Array.isArray(body.diet) ? body.diet[0] : body.diet;
-          const MEAT_KEYWORDS = ['chicken', 'turkey', 'duck', 'beef', 'pork', 'lamb', 'mutton', 'goat', 'veal', 'fish', 'salmon', 'tuna', 'shrimp', 'prawn', 'crab', 'lobster', 'seafood', 'meat', 'steak', 'bacon', 'ham'];
-          const hasConflict = MEAT_KEYWORDS.some(keyword => queryLower.includes(keyword)) && (dietRadio === 'veg' || dietRadio === 'vegan');
+          const religion = typeof body.religion === 'string' ? body.religion : null;
 
-          if (hasConflict) {
+          // Diet conflict check
+          const MEAT_KEYWORDS = ['chicken', 'turkey', 'duck', 'beef', 'pork', 'lamb', 'mutton', 'goat', 'veal', 'fish', 'salmon', 'tuna', 'shrimp', 'prawn', 'crab', 'lobster', 'seafood', 'meat', 'steak', 'bacon', 'ham'];
+          const hasDietConflict = MEAT_KEYWORDS.some(keyword => queryLower.includes(keyword)) && (dietRadio === 'veg' || dietRadio === 'vegan');
+
+          if (hasDietConflict) {
             const dietLabel = dietRadio === 'vegan' ? 'vegan' : 'vegetarian';
             return Response.json({
               error: `Inconsistent request: Your query mentions meat/fish but you selected ${dietLabel} diet. Please either: (1) Change diet to "Non-Veg", or (2) Query a ${dietLabel} dish instead.`,
               requestId
             }, { status: 400 });
           }
+
+          // Religious conflict check
+          const RELIGION_EXCLUSIONS: Record<string, string[]> = {
+            hindu: ['beef'],
+            muslim: ['pork', 'bacon', 'ham'],
+            jewish: ['pork', 'shellfish', 'shrimp', 'crab', 'lobster', 'oyster', 'clam', 'mussel'],
+            jain: ['root vegetables', 'onion', 'garlic', 'potato'],
+          };
+
+          if (religion && RELIGION_EXCLUSIONS[religion]) {
+            const excluded = RELIGION_EXCLUSIONS[religion];
+            const hasReligionConflict = excluded.some(item => queryLower.includes(item));
+            if (hasReligionConflict) {
+              return Response.json({
+                error: `Conflict: Your query conflicts with ${religion} dietary restrictions. Please choose a different dish.`,
+                requestId
+              }, { status: 400 });
+            }
+          }
+
           return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
         }
 
