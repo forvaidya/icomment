@@ -201,25 +201,22 @@ export default {
       }
     }
 
-    if (url.pathname === '/api/me') {
-      // Return current user from CF Access email
-      const userId = userEmail || 'anonymous';
-      return Response.json({ userEmail: userEmail || null, userId }, { status: 200 });
-    }
 
     if (url.pathname === '/meal') {
-      console.error('MEAL HANDLER CALLED');
       if (request.method !== 'POST') {
         return Response.json({ error: 'Only POST allowed' }, { status: 405 });
       }
 
       const requestId = crypto.randomUUID();
       const startedAt = Date.now();
-      console.error(`MEAL START: ${requestId}`);
-      console.log(JSON.stringify({ event: 'meal.auth', requestId, userEmail, userId: userEmail || 'anonymous' }));
+
+      // Normalize email: CF Access may return duplicates with comma, take first
+      const normalizedEmail = userEmail ? userEmail.split(',')[0].trim() : null;
+      console.error(JSON.stringify({ event: 'meal.auth.raw', requestId, rawHeader: userEmail, normalized: normalizedEmail }));
+      console.log(JSON.stringify({ event: 'meal.auth', requestId, userEmail: normalizedEmail, userId: normalizedEmail || 'anonymous' }));
 
       // Extract userId from CF Access email (forwarded by Pages Function)
-      let userId = userEmail || 'anonymous';
+      let userId = normalizedEmail || 'anonymous';
 
       try {
         const body = await request.json() as { query: string; diet: unknown; allergies: unknown; sessionId?: string; feedback?: string; logLevel?: string };
@@ -286,7 +283,7 @@ export default {
           requestId,
           durationMs: Date.now() - startedAt
         }));
-        return Response.json({ ...result, requestId }, { status: 200 });
+        return Response.json({ ...result, requestId, userEmail: userId !== 'anonymous' ? userId : null }, { status: 200 });
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : String(e);
         console.error(JSON.stringify({

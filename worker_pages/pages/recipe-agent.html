@@ -223,7 +223,7 @@
         <div class="recipe-container">
         <div id="welcomeSection" style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196F3;">
             <p style="margin: 0; font-size: 14px; color: #1565c0;">
-                Welcome, <strong id="userEmail"></strong>
+                Welcome, <strong id="userEmail">Guest</strong>
                 <span id="searchCount" style="margin-left: 15px; color: #666; font-size: 12px;"></span>
             </p>
         </div>
@@ -314,9 +314,6 @@
 
     <script>
         function showWelcome() {
-            // Auth is backend-only (CF Access), show "Guest" on frontend
-            document.getElementById('userEmail').textContent = 'Guest';
-
             // Load search count from localStorage
             try {
                 const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
@@ -325,6 +322,12 @@
                 }
             } catch (e) {
                 // Silently fail
+            }
+        }
+
+        function updateUserEmail(email) {
+            if (email) {
+                document.getElementById('userEmail').textContent = email;
             }
         }
 
@@ -447,6 +450,7 @@
                 });
 
                 const data = await response.json();
+                updateUserEmail(data.userEmail);
                 if (!response.ok) {
                     showToast(data.error, 'error');
                     resultDiv.textContent = '';
@@ -553,6 +557,7 @@
                 });
 
                 const data = await response.json();
+                updateUserEmail(data.userEmail);
                 if (!response.ok) {
                     showToast(data.error, 'error');
                     resultDiv.textContent = '';

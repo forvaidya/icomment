@@ -440,7 +440,7 @@ async function findSimilarQueries(db: any, embedding: number[], diet: Diet, limi
     const result = await db.prepare(`
       SELECT DISTINCT query, recipeTitle, embedding
       FROM search_history
-      WHERE embedding IS NOT NULL AND diet = ? AND recipeTitle IS NOT NULL
+      WHERE embedding IS NOT NULL AND diet = ?
       ORDER BY timestamp DESC
       LIMIT 100
     `).bind(diet).all();
@@ -478,7 +478,6 @@ export async function runRecipeAgent(
   db?: any,
   userId?: string | null,
 ) {
-  console.error('super-modak-testing: version-5 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
   const religion = body.religion || null;
@@ -508,15 +507,10 @@ export async function runRecipeAgent(
     console.log(JSON.stringify({ event: 'embedding.generated', requestId, embeddingDim: embedding?.length || 0 }));
   }
 
-  // Search for similar queries (semantic cache)
+  // Log semantic search for analytics (D1 has query+embedding, not full recipe)
   if (embedding && db && diet) {
     const similar = await findSimilarQueries(db, embedding, diet, 3);
-    console.log(JSON.stringify({ event: 'semantic.search', requestId, matchesFound: similar.length, topMatch: similar[0] }));
-    if (similar.length > 0) {
-      const topMatch = similar[0];
-      console.log(JSON.stringify({ event: 'semantic.cache.hit', requestId, query: topMatch.query, similarity: topMatch.similarity.toFixed(2) }));
-      return { recipe: { title: topMatch.recipeTitle || 'Recipe', description: 'Similar recipe from cache', ingredients: [], steps: [], tags: ['cached'] }, cached: true };
-    }
+    console.log(JSON.stringify({ event: 'semantic.search', requestId, matchesFound: similar.length, topMatch: similar[0]?.query }));
   }
 
   // Log search to D1 (use "anonymous" if no userId so vector search works globally)
