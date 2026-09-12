@@ -168,6 +168,11 @@
         <div class="recipe-card">
             <h1 class="recipe-title">🍲 Recipe Agent</h1>
 
+            <div id="recentSearchesContainer" style="margin-bottom: 20px; display: none;">
+                <label class="form-label">Your Recent Searches</label>
+                <div id="recentSearchesList" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+            </div>
+
             <div class="form-group">
                 <label class="form-label" for="query">What would you like to cook?</label>
                 <textarea class="form-textarea" id="query" rows="3" placeholder="What would you like to cook?">Pasta in white sauce</textarea>
@@ -349,12 +354,51 @@
             }
         }
 
+        // Fetch and display recent searches on page load
+        async function loadRecentSearches() {
+            try {
+                const response = await fetch('/api/recent-searches');
+                const data = await response.json();
+                if (data.recent && data.recent.length > 0) {
+                    const container = document.getElementById('recentSearchesContainer');
+                    const list = document.getElementById('recentSearchesList');
+                    list.innerHTML = data.recent.slice(0, 5).map((search, idx) => `
+                        <button type="button"
+                            onclick="loadRecentSearch(${idx})"
+                            style="padding: 6px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            ${search.query}
+                        </button>
+                    `).join('');
+                    window.recentSearches = data.recent;
+                    container.style.display = 'block';
+                }
+            } catch (e) {
+                console.log('Could not load recent searches:', e);
+            }
+        }
+
+        window.loadRecentSearch = function(idx) {
+            const search = window.recentSearches?.[idx];
+            if (!search) return;
+            document.getElementById('query').value = search.query;
+            document.querySelector('input[name="diet"][value="' + search.diet + '"]')?.click();
+            (search.allergies || []).forEach(allergy => {
+                document.querySelector('input[name="allergies"][value="' + allergy + '"]')?.click();
+            });
+        };
+
+        // Load recent searches on page load
+        loadRecentSearches();
+
         generateBtn.addEventListener('click', async () => {
             const query = document.getElementById('query').value;
             const dietRadio = document.querySelector('input[name="diet"]:checked');
             const diet = dietRadio ? [dietRadio.value] : [];
             const allergies = Array.from(document.querySelectorAll('input[name="allergies"]:checked'))
                 .map(cb => cb.value);
+
+            // Store latest search in localStorage for quick access
+            localStorage.setItem('lastSearch', JSON.stringify({ query, diet: diet[0] || null, allergies }));
 
             resultDiv.textContent = 'Generating...';
             resultDiv.classList.add('result-loading');
