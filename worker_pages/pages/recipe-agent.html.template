@@ -259,12 +259,10 @@
         let sessionId = localStorage.getItem('recipeSessionId') || crypto.randomUUID();
         localStorage.setItem('recipeSessionId', sessionId);
 
-        function renderRecipe(recipe, warning) {
+        function renderRecipe(recipe) {
             if (!recipe) return '';
-            const warningHtml = warning ? `<div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; color: #856404; font-size: 13px;">${warning}</div>` : '';
             return `
                 <div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">
-                    ${warningHtml}
                     <h3 style="margin: 0 0 10px 0; color: #333;">${recipe.title}</h3>
                     <p style="margin: 0 0 15px 0; color: #666; font-size: 14px;">${recipe.description}</p>
 
@@ -347,7 +345,7 @@
                     resultDiv.classList.add('result-error');
                 } else {
                     currentRecipe = data.recipe;
-                    resultDiv.innerHTML = renderRecipe(data.recipe, data.warning);
+                    resultDiv.innerHTML = renderRecipe(data.recipe);
                     resultDiv.classList.remove('result-loading', 'result-error');
                 }
             } catch (error) {
@@ -419,7 +417,7 @@
                     resultDiv.classList.add('result-error');
                 } else {
                     currentRecipe = data.recipe;
-                    resultDiv.innerHTML = renderRecipe(data.recipe, data.warning);
+                    resultDiv.innerHTML = renderRecipe(data.recipe);
                     resultDiv.classList.remove('result-loading', 'result-error');
                 }
             } catch (error) {

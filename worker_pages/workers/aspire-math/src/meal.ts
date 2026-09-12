@@ -388,7 +388,11 @@ export async function runRecipeAgent(
   }
 
   // Check for diet conflicts (e.g., "chicken" query with "veg" diet)
-  const dietWarning = detectDietConflict(String(body.query ?? ''), diet);
+  const dietConflict = detectDietConflict(String(body.query ?? ''), diet);
+  if (dietConflict) {
+    console.log(JSON.stringify({ event: 'meal.diet.conflict.rejected', requestId, query: body.query, diet, conflict: dietConflict }));
+    return null; // Reject inconsistent input
+  }
 
   // ponytail: cache key is JSON hash. No secure crypto needed, just deterministic collision avoidance.
   const key = `recipe:${btoa(JSON.stringify({ q: body.query, d: diet, a: allergies.sort() })).replace(/[+/=]/g, '')}`.slice(0, 512);
@@ -503,8 +507,7 @@ export async function runRecipeAgent(
           }
         }
 
-        const result: any = { recipe: filled };
-        if (dietWarning) result.warning = dietWarning;
+        const result = { recipe: filled };
         if (kv) {
           await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
           console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));
@@ -545,8 +548,7 @@ export async function runRecipeAgent(
     const webRecipe = await webSearchRecipe(String(body.query ?? 'recipe'), diet);
     if (webRecipe) {
       console.log(JSON.stringify({ event: 'meal.fallback.websearch', requestId }));
-      const result: any = { recipe: webRecipe, source: 'web-search' };
-      if (dietWarning) result.warning = dietWarning;
+      const result = { recipe: webRecipe, source: 'web-search' };
       if (kv) {
         await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
         console.log(JSON.stringify({ event: 'meal.cache.store.websearch', requestId, key }));
@@ -565,8 +567,7 @@ export async function runRecipeAgent(
     tags: Array.isArray(recipe.tags) ? recipe.tags : [],
   };
 
-  const result: any = { recipe: filled, warning: 'Stopped at iteration cap' };
-  if (dietWarning) result.warning = dietWarning || result.warning;
+  const result = { recipe: filled, warning: 'Stopped at iteration cap' };
   if (kv) {
     await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
     console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));

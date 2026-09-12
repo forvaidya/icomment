@@ -272,6 +272,19 @@ export default {
 
         const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel, env.DB, userId);
         if (!result) {
+          // Check if it was a diet conflict
+          const queryLower = String(body.query ?? '').toLowerCase();
+          const dietRadio = Array.isArray(body.diet) ? body.diet[0] : body.diet;
+          const MEAT_KEYWORDS = ['chicken', 'turkey', 'duck', 'beef', 'pork', 'lamb', 'mutton', 'goat', 'veal', 'fish', 'salmon', 'tuna', 'shrimp', 'prawn', 'crab', 'lobster', 'seafood', 'meat', 'steak', 'bacon', 'ham'];
+          const hasConflict = MEAT_KEYWORDS.some(keyword => queryLower.includes(keyword)) && (dietRadio === 'veg' || dietRadio === 'vegan');
+
+          if (hasConflict) {
+            const dietLabel = dietRadio === 'vegan' ? 'vegan' : 'vegetarian';
+            return Response.json({
+              error: `Inconsistent request: Your query mentions meat/fish but you selected ${dietLabel} diet. Please either: (1) Change diet to "Non-Veg", or (2) Query a ${dietLabel} dish instead.`,
+              requestId
+            }, { status: 400 });
+          }
           return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
         }
 
