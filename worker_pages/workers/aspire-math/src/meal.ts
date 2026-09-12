@@ -323,8 +323,9 @@ export async function runRecipeAgent(
         calls = out.response;
         console.log(JSON.stringify({ event: 'meal.tool.array', requestId, turn, callsCount: calls.length }));
       } else if (typeof out?.response === 'string') {
+        console.log(JSON.stringify({ event: 'meal.response.full', requestId, turn, fullResponse: out.response }));
         const parsed = extractJson(out.response);
-        console.log(JSON.stringify({ event: 'meal.extract.attempt', requestId, turn, parsedIsArray: Array.isArray(parsed), parsedIsObj: parsed && typeof parsed === 'object' && !Array.isArray(parsed), parsedType: typeof parsed }));
+        console.log(JSON.stringify({ event: 'meal.extract.attempt', requestId, turn, parsedIsArray: Array.isArray(parsed), parsedType: typeof parsed, parsedKeys: parsed ? Object.keys(parsed).slice(0, 5) : null }));
         if (Array.isArray(parsed)) {
           calls = parsed;
           console.log(JSON.stringify({ event: 'meal.tool.parsed', requestId, turn, callsCount: calls.length }));
