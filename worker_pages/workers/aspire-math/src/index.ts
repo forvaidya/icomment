@@ -175,6 +175,29 @@ export default {
       const startedAt = Date.now();
       console.error(`MEAL START: ${requestId}`);
 
+      // Extract userId from cookie or Authorization header
+      let userId: string | null = null;
+      const cookieHeader = request.headers.get('Cookie') || '';
+      const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+        const [key, value] = cookie.trim().split('=');
+        acc[key] = decodeURIComponent(value);
+        return acc;
+      }, {} as Record<string, string>);
+      userId = cookies['userId'] || null;
+
+      if (!userId) {
+        const authHeader = request.headers.get('Authorization') || '';
+        const match = authHeader.match(/Bearer\s+(\S+)/);
+        if (match && match[1]) {
+          try {
+            const jwtPayload = JSON.parse(atob(match[1].split('.')[1]));
+            userId = jwtPayload.sub || jwtPayload.userId || null;
+          } catch (e) {
+            console.log(JSON.stringify({ event: 'jwt.parse.error', error: String(e) }));
+          }
+        }
+      }
+
       try {
         const body = await request.json() as { query: string; diet: unknown; allergies: unknown; sessionId?: string; feedback?: string; logLevel?: string };
         const logLevel = body.logLevel || 'debug';
@@ -194,7 +217,7 @@ export default {
           logLevel
         }));
 
-        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel, env.DB);
+        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel, env.DB, userId);
         if (!result) {
           return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
         }

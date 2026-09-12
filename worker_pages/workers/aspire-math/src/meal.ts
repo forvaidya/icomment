@@ -353,10 +353,16 @@ export async function runRecipeAgent(
   feedback?: string,
   logLevel?: string,
   db?: any,
+  userId?: string | null,
 ) {
   console.error('super-modak-testing: version-5 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
+
+  // Log search to D1 if userId available
+  if (userId && db) {
+    await logSearchToDb(db, userId, String(body.query ?? 'recipe'), diet, allergies);
+  }
 
   // ponytail: cache key is JSON hash. No secure crypto needed, just deterministic collision avoidance.
   const key = `recipe:${btoa(JSON.stringify({ q: body.query, d: diet, a: allergies.sort() })).replace(/[+/=]/g, '')}`.slice(0, 512);
