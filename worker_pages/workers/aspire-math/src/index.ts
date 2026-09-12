@@ -76,6 +76,59 @@ export default {
       }, { headers: { 'Content-Type': 'application/json' } });
     }
 
+    if (url.pathname === '/api/recent-searches') {
+      // Extract userId from cookies or Authorization header
+      let userId: string | null = null;
+      const cookieHeader = request.headers.get('Cookie') || '';
+      const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+        const [key, value] = cookie.trim().split('=');
+        acc[key] = decodeURIComponent(value);
+        return acc;
+      }, {} as Record<string, string>);
+      userId = cookies['userId'] || null;
+
+      if (!userId) {
+        const authHeader = request.headers.get('Authorization') || '';
+        const match = authHeader.match(/Bearer\s+(\S+)/);
+        if (match && match[1]) {
+          try {
+            const jwtPayload = JSON.parse(atob(match[1].split('.')[1]));
+            userId = jwtPayload.sub || jwtPayload.userId || null;
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
+      if (!userId || !env.DB) {
+        return Response.json({ recent: [] }, { status: 200 });
+      }
+
+      try {
+        const result = await env.DB.prepare(`
+          SELECT query, diet, allergies, recipeTitle, liked, timestamp
+          FROM search_history
+          WHERE userId = ?
+          ORDER BY timestamp DESC
+          LIMIT 10
+        `).bind(userId).all();
+
+        const recent = (result as any).results?.map((row: any) => ({
+          query: row.query,
+          diet: row.diet,
+          allergies: row.allergies ? JSON.parse(row.allergies) : [],
+          recipeTitle: row.recipeTitle,
+          liked: row.liked === 1,
+          timestamp: row.timestamp
+        })) || [];
+
+        return Response.json({ recent }, { status: 200 });
+      } catch (e) {
+        console.log(JSON.stringify({ event: 'recent_searches.error', error: String(e) }));
+        return Response.json({ recent: [] }, { status: 200 });
+      }
+    }
+
     if (url.pathname === '/multiply') {
       const requestId = crypto.randomUUID();
       const startedAt = Date.now();
