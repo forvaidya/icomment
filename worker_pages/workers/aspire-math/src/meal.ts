@@ -109,16 +109,16 @@ const MEAT_KEYWORDS = [
   'seafood', 'meat', 'steak', 'bacon', 'ham', 'sausage'
 ];
 
-// Query filter: remove noise that doesn't affect recipe
-// KEEP: all festivals (provide context) and religious preferences
-// REMOVE: deities, social occasions, relations/people, orphaned prepositions/articles
+// Query filter: minimal, let LLM see rich context
+// REMOVE only: deities, mother/grandmother, girlfriend/boyfriend (truly non-recipe context)
+// KEEP: occasions, other relations, descriptors, festivals, ingredients (LLM can handle noise)
 const NOISE_PATTERNS = [
-  // Deities (Ganesh, Lakshmi, Krishna, etc.)
-  /\b(ganesh|lakshmi|krishna|shiva|brahma|durga|saraswati|hanuman|ganesha|lord)\b/gi,
-  // Social occasions (birthday, anniversary, wedding, etc.)
-  /\b(birthday|anniversary|wedding|engagement|baby shower|graduation|reunion)\b/gi,
-  // Relations/people (Grandma, girlfriend, friend, etc.) and possessives
-  /\b(grandma|grandpa|grandmother|grandfather|mom|mother|dad|father|wife|husband|girlfriend|boyfriend|son|daughter|sister|brother|uncle|aunt|cousin|friend|spouse|fiancee|fiancé|baby|kid|child|my|our|his|her|ma'am|sir)\b/gi,
+  // Deities only
+  /\b(ganesh|lakshmi|krishna|shiva|brahma|durga|saraswati|hanuman|ganesha)\b/gi,
+  // Mother/grandmother (too generic)
+  /\b(mother|mom|grandmother|grandma)\b/gi,
+  // Girlfriend/boyfriend (purely social, not dietary)
+  /\b(girlfriend|boyfriend)\b/gi,
 ];
 
 function filterQuery(query: string): string {
@@ -126,14 +126,7 @@ function filterQuery(query: string): string {
   for (const pattern of NOISE_PATTERNS) {
     filtered = filtered.replace(pattern, '');
   }
-  // Split, remove common orphaned prepositions/articles, rejoin
-  const words = filtered
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(w => !/^(for|at|in|on|to|of|the|a|an)$/i.test(w));
-
-  return words.join(' ');
+  return filtered.replace(/\s+/g, ' ').trim();
 }
 
 // Religious/cultural exclusions
