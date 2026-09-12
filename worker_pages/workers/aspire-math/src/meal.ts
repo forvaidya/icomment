@@ -341,12 +341,11 @@ export async function runRecipeAgent(
       // If extraction returned array (tool calls), skip it and find the recipe object
       if (Array.isArray(recipe)) {
         const responseStr = String(rawResponse);
-        // Find the first '{' which should start the recipe object
-        const objStart = responseStr.indexOf('{');
+        // Find the ']' that closes the tool calls array, then find '{' after it
+        const arrayEnd = responseStr.lastIndexOf(']');
+        const objStart = responseStr.indexOf('{', arrayEnd);
         if (objStart !== -1) {
-          const objString = responseStr.slice(objStart);
-          recipe = extractJson(objString);
-          console.log(JSON.stringify({ event: 'meal.recipe.debug', requestId, turn, objStringLen: objString.length, objStringLast100: objString.slice(-100), recipeNull: recipe === null, recipeType: typeof recipe }));
+          recipe = extractJson(responseStr.slice(objStart));
         } else {
           recipe = null;
         }
