@@ -321,8 +321,10 @@ export async function runRecipeAgent(
       // Model might return tool calls as array (as string or object)
       if (Array.isArray(out?.response)) {
         calls = out.response;
+        console.log(JSON.stringify({ event: 'meal.tool.array', requestId, turn, callsCount: calls.length }));
       } else if (typeof out?.response === 'string') {
         const parsed = extractJson(out.response);
+        console.log(JSON.stringify({ event: 'meal.extract.attempt', requestId, turn, parsedIsArray: Array.isArray(parsed), parsedIsObj: parsed && typeof parsed === 'object' && !Array.isArray(parsed), parsedType: typeof parsed }));
         if (Array.isArray(parsed)) {
           calls = parsed;
           console.log(JSON.stringify({ event: 'meal.tool.parsed', requestId, turn, callsCount: calls.length }));
