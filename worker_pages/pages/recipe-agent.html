@@ -209,6 +209,14 @@
         </nav>
 
         <div class="recipe-container">
+        <div id="welcomeSection" style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196F3; display: none;">
+            <p style="margin: 0; font-size: 14px; color: #1565c0;">
+                Welcome, <strong id="userEmail"></strong>
+                <span id="searchCount" style="margin-left: 15px; color: #666; font-size: 12px;"></span>
+            </p>
+        </div>
+
+        <div class="recipe-container">
         <div class="recipe-card">
             <h1 class="recipe-title">🍲 Recipe Agent</h1>
 
@@ -293,6 +301,48 @@
     </div>
 
     <script>
+        // Extract and display user from JWT
+        function getUserFromJWT() {
+            try {
+                // Check cookie
+                const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+                    const [key, value] = cookie.trim().split('=');
+                    acc[key] = decodeURIComponent(value);
+                    return acc;
+                }, {});
+
+                if (cookies.auth || cookies.jwt) {
+                    const token = cookies.auth || cookies.jwt;
+                    const parts = token.split('.');
+                    if (parts.length === 3) {
+                        const payload = JSON.parse(atob(parts[1]));
+                        return payload.email || payload.sub || payload.userId;
+                    }
+                }
+            } catch (e) {
+                // Silently fail if JWT parsing fails
+            }
+            return null;
+        }
+
+        function showWelcome() {
+            const userEmail = getUserFromJWT();
+            if (userEmail) {
+                document.getElementById('userEmail').textContent = userEmail;
+                document.getElementById('welcomeSection').style.display = 'block';
+
+                // Load search count
+                fetch('/api/recent-searches')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.recent && data.recent.length > 0) {
+                            document.getElementById('searchCount').textContent = `(${data.recent.length} searches)`;
+                        }
+                    })
+                    .catch(() => {}); // Silently fail
+            }
+        }
+
         // Toast notification
         function showToast(message, type = 'error') {
             const toast = document.createElement('div');
@@ -459,7 +509,8 @@
             });
         };
 
-        // Load recent searches on page load
+        // Load recent searches and show welcome on page load
+        showWelcome();
         loadRecentSearches();
 
         generateBtn.addEventListener('click', async () => {
