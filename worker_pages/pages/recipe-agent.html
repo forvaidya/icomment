@@ -330,15 +330,15 @@
             if (userEmail) {
                 document.getElementById('userEmail').textContent = userEmail;
 
-                // Load search count
-                fetch('/api/recent-searches')
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.recent && data.recent.length > 0) {
-                            document.getElementById('searchCount').textContent = `(${data.recent.length} searches)`;
-                        }
-                    })
-                    .catch(() => {}); // Silently fail
+                // Load search count from localStorage
+                try {
+                    const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                    if (searches.length > 0) {
+                        document.getElementById('searchCount').textContent = `(${searches.length} searches)`;
+                    }
+                } catch (e) {
+                    // Silently fail
+                }
             }
         }
 
@@ -475,22 +475,44 @@
             }
         }
 
-        // Fetch and display recent searches on page load
-        async function loadRecentSearches() {
+        // localStorage-based recent searches (no backend needed)
+        const RECENT_SEARCHES_KEY = 'recipeRecentSearches';
+        const MAX_SEARCHES = 50;
+
+        function saveSearchToStorage(query, diet, allergies) {
             try {
-                const response = await fetch('/api/recent-searches');
-                const data = await response.json();
-                if (data.recent && data.recent.length > 0) {
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                // Add new search to front
+                searches.unshift({ query, diet, allergies: allergies || [], timestamp: Date.now() });
+                // Keep only unique queries (remove duplicates, keep first occurrence)
+                const seen = new Set();
+                const unique = searches.filter(s => {
+                  const key = `${s.query}|${s.diet}|${JSON.stringify(s.allergies)}`;
+                  if (seen.has(key)) return false;
+                  seen.add(key);
+                  return true;
+                });
+                // Limit to MAX_SEARCHES
+                localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(unique.slice(0, MAX_SEARCHES)));
+            } catch (e) {
+                console.log('Could not save search to storage:', e);
+            }
+        }
+
+        function loadRecentSearches() {
+            try {
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                if (searches.length > 0) {
                     const container = document.getElementById('recentSearchesContainer');
                     const list = document.getElementById('recentSearchesList');
-                    list.innerHTML = data.recent.slice(0, 5).map((search, idx) => `
+                    list.innerHTML = searches.slice(0, 5).map((search, idx) => `
                         <button type="button"
                             onclick="loadRecentSearch(${idx})"
                             style="padding: 6px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">
                             ${search.query}
                         </button>
                     `).join('');
-                    window.recentSearches = data.recent;
+                    window.recentSearches = searches;
                     container.style.display = 'block';
                 }
             } catch (e) {
@@ -502,7 +524,9 @@
             const search = window.recentSearches?.[idx];
             if (!search) return;
             document.getElementById('query').value = search.query;
-            document.querySelector('input[name="diet"][value="' + search.diet + '"]')?.click();
+            if (search.diet) {
+                document.querySelector('input[name="diet"][value="' + search.diet + '"]')?.click();
+            }
             (search.allergies || []).forEach(allergy => {
                 document.querySelector('input[name="allergies"][value="' + allergy + '"]')?.click();
             });
@@ -520,8 +544,8 @@
                 .map(cb => cb.value);
             const religion = document.getElementById('religion').value || null;
 
-            // Store latest search in localStorage for quick access
-            localStorage.setItem('lastSearch', JSON.stringify({ query, diet: diet[0] || null, allergies, religion }));
+            // Save search to history
+            saveSearchToStorage(query, diet[0] || null, allergies);
 
             resultDiv.textContent = 'Generating...';
             resultDiv.classList.add('result-loading');
@@ -552,17 +576,17 @@
             }
         });
 
-        // Load and display all recent searches at bottom
-        async function loadLastQueries() {
+        // Load and display all recent searches at bottom (from localStorage)
+        function loadLastQueries() {
             try {
-                const response = await fetch('/api/recent-searches');
-                const data = await response.json();
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
                 const container = document.getElementById('lastQueriesContainer');
                 const list = document.getElementById('lastQueriesList');
                 const noMsg = document.getElementById('noQueriesMsg');
 
-                if (data.recent && data.recent.length > 0) {
-                    list.innerHTML = data.recent.map((search, idx) => `
+                if (searches.length > 0) {
+                    window.recentSearches = searches; // Update global for loadRecentSearch
+                    list.innerHTML = searches.map((search, idx) => `
                         <button type="button"
                             onclick="loadRecentSearch(${idx})"
                             style="padding: 6px 12px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px; margin-bottom: 6px;">
@@ -580,11 +604,11 @@
             }
         }
 
-        window.clearLastQueries = async function() {
+        window.clearLastQueries = function() {
             if (!confirm('Clear all search history? This cannot be undone.')) return;
-            // For now, just show a message (D1 deletion would be backend work)
-            showToast('Search history cleared (feature in progress)', 'info');
-            // In future: await fetch('/api/recent-searches/clear', { method: 'POST' });
+            localStorage.removeItem(RECENT_SEARCHES_KEY);
+            loadLastQueries();
+            showToast('Search history cleared', 'info');
         };
 
         loadLastQueries();
