@@ -339,18 +339,17 @@
 
         function showWelcome() {
             const userEmail = getUserFromJWT();
-            if (userEmail) {
-                document.getElementById('userEmail').textContent = userEmail;
+            // Show user email if logged in, otherwise "Guest"
+            document.getElementById('userEmail').textContent = userEmail || 'Guest';
 
-                // Load search count from localStorage
-                try {
-                    const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
-                    if (searches.length > 0) {
-                        document.getElementById('searchCount').textContent = `(${searches.length} searches)`;
-                    }
-                } catch (e) {
-                    // Silently fail
+            // Load search count from localStorage
+            try {
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                if (searches.length > 0) {
+                    document.getElementById('searchCount').textContent = `(${searches.length} searches)`;
                 }
+            } catch (e) {
+                // Silently fail
             }
         }
 

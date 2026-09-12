@@ -518,9 +518,10 @@ export async function runRecipeAgent(
     }
   }
 
-  // Log search to D1 if userId available (will be updated with recipeTitle after generation)
-  if (userId && db) {
-    await logSearchToDb(db, userId, filteredQuery, diet, allergies, undefined, undefined, embedding);
+  // Log search to D1 (use "anonymous" if no userId so vector search works globally)
+  const userIdForLogging = userId || 'anonymous';
+  if (db) {
+    await logSearchToDb(db, userIdForLogging, filteredQuery, diet, allergies, undefined, undefined, embedding);
   }
 
   // ponytail: cache key is JSON hash. No secure crypto needed, just deterministic collision avoidance.
