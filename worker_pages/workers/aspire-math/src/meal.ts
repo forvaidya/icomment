@@ -209,7 +209,12 @@ export function extractJson(text: unknown): any | null {
 // 2. { function: { name, arguments } }
 // 3. { function: "name", parameters: {...} } (direct format)
 // 4. { function: { name, parameters } } (nested with parameters key)
+// 5. [function_name, parameters] (array shorthand)
 function toolCallOf(call: any): { name: string; args: any } {
+  // Format 5: array shorthand [function_name, params]
+  if (Array.isArray(call) && call.length === 2) {
+    return { name: call[0], args: call[1] ?? {} };
+  }
   if (call.function && typeof call.function === 'string') {
     // Format 3: direct function name + parameters
     return { name: call.function, args: call.parameters ?? {} };
@@ -222,13 +227,25 @@ function toolCallOf(call: any): { name: string; args: any } {
 
 function normalizeToolCalls(calls: any[]): any[] {
   return calls.map((call, idx) => {
-    const fn = call.function ?? call;
-    const params = fn.parameters ?? {};
+    let name: string;
+    let params: any;
+
+    // Handle array shorthand [function_name, params]
+    if (Array.isArray(call) && call.length === 2) {
+      name = call[0];
+      params = call[1] ?? {};
+    } else {
+      // Handle object formats
+      const fn = call.function ?? call;
+      name = fn.name || (Array.isArray(call) ? call[0] : '');
+      params = fn.parameters ?? fn.arguments ?? {};
+    }
+
     return {
       type: 'function',
       id: `call_${idx}_${Date.now()}`,
       function: {
-        name: fn.name,
+        name,
         arguments: JSON.stringify(params)
       }
     };
