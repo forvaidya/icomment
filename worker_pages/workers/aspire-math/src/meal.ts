@@ -188,11 +188,16 @@ export function extractJson(text: unknown): any | null {
     if (start === -1) return null;
 
     const end = trimmed.startsWith('[', start) ? trimmed.lastIndexOf(']') : trimmed.lastIndexOf('}');
-    if (end <= start) return null;
+    if (end <= start) {
+      if (typeof text === 'string') console.error('extractJson: end <= start', { textLen: text.length, start, end });
+      return null;
+    }
     try {
       const snippet = trimmed.slice(start, end + 1);
+      if (typeof text === 'string' && text.includes('check_ingredient')) console.error('extractJson: snippet', { snippetStart: snippet.slice(0, 50), snippetEnd: snippet.slice(-50) });
       return JSON.parse(snippet);
     } catch (snippetErr) {
+      if (typeof text === 'string' && text.includes('check_ingredient')) console.error('extractJson: parse failed', { errorMsg: String(snippetErr).slice(0, 100) });
       return null;
     }
   }
@@ -272,7 +277,7 @@ export async function runRecipeAgent(
   feedback?: string,
   logLevel?: string,
 ) {
-  console.error('super-modak-testing: version-3 loaded');
+  console.error('super-modak-testing: version-4 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
 
