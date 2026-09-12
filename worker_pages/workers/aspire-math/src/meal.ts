@@ -97,6 +97,29 @@ const ALLERGEN_TAGS: Record<string, string[]> = {
   seeds: ['sesame-seeds'],
 };
 
+// Meat/fish keywords (non-veg class) to detect diet conflicts
+const MEAT_KEYWORDS = [
+  // Poultry
+  'chicken', 'turkey', 'duck', 'goose',
+  // Beef/pork
+  'beef', 'pork', 'lamb', 'mutton', 'goat', 'veal',
+  // Fish & seafood (all non-veg)
+  'fish', 'salmon', 'tuna', 'cod', 'trout', 'mackerel', 'sardine',
+  'shrimp', 'prawn', 'crab', 'lobster', 'oyster', 'mussel', 'clam',
+  'seafood', 'meat', 'steak', 'bacon', 'ham', 'sausage'
+];
+
+function detectDietConflict(query: string, diet: Diet): string | null {
+  if (!diet || diet === 'non_veg') return null; // No conflict if non_veg or no diet
+  const queryLower = String(query).toLowerCase();
+  const conflict = MEAT_KEYWORDS.find(keyword => queryLower.includes(keyword));
+  if (conflict) {
+    const dietLabel = diet === 'vegan' ? 'vegan' : 'vegetarian';
+    return `⚠️ "${conflict}" is a meat/fish (non-vegetarian), but you selected ${dietLabel} diet. Generated ${dietLabel} recipe instead.`;
+  }
+  return null;
+}
+
 const TOOLS = [{
   type: 'function',
   function: {
@@ -364,6 +387,9 @@ export async function runRecipeAgent(
     await logSearchToDb(db, userId, String(body.query ?? 'recipe'), diet, allergies);
   }
 
+  // Check for diet conflicts (e.g., "chicken" query with "veg" diet)
+  const dietWarning = detectDietConflict(String(body.query ?? ''), diet);
+
   // ponytail: cache key is JSON hash. No secure crypto needed, just deterministic collision avoidance.
   const key = `recipe:${btoa(JSON.stringify({ q: body.query, d: diet, a: allergies.sort() })).replace(/[+/=]/g, '')}`.slice(0, 512);
   if (kv) {
@@ -477,7 +503,8 @@ export async function runRecipeAgent(
           }
         }
 
-        const result = { recipe: filled };
+        const result: any = { recipe: filled };
+        if (dietWarning) result.warning = dietWarning;
         if (kv) {
           await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
           console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));
@@ -518,7 +545,8 @@ export async function runRecipeAgent(
     const webRecipe = await webSearchRecipe(String(body.query ?? 'recipe'), diet);
     if (webRecipe) {
       console.log(JSON.stringify({ event: 'meal.fallback.websearch', requestId }));
-      const result = { recipe: webRecipe, source: 'web-search' };
+      const result: any = { recipe: webRecipe, source: 'web-search' };
+      if (dietWarning) result.warning = dietWarning;
       if (kv) {
         await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
         console.log(JSON.stringify({ event: 'meal.cache.store.websearch', requestId, key }));
@@ -537,7 +565,8 @@ export async function runRecipeAgent(
     tags: Array.isArray(recipe.tags) ? recipe.tags : [],
   };
 
-  const result = { recipe: filled, warning: 'Stopped at iteration cap' };
+  const result: any = { recipe: filled, warning: 'Stopped at iteration cap' };
+  if (dietWarning) result.warning = dietWarning || result.warning;
   if (kv) {
     await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
     console.log(JSON.stringify({ event: 'meal.cache.store', requestId, key }));
