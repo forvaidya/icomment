@@ -335,17 +335,18 @@ export async function runRecipeAgent(
 
     if (!calls.length) {
       const rawResponse = out?.response;
-      // Handle responses with multiple JSON objects (e.g., tool calls array followed by recipe object)
+      // Handle multiple formats: direct object, string with array+object, etc.
       let recipe = extractJson(rawResponse);
-      console.log(JSON.stringify({ event: 'meal.extract.first', requestId, turn, firstIsArray: Array.isArray(recipe), firstIsNull: recipe === null }));
-      if (!recipe || Array.isArray(recipe)) {
-        // If first extraction is array or failed, try to find object recipe in the string
-        const objStart = String(rawResponse).indexOf('{');
-        console.log(JSON.stringify({ event: 'meal.extract.objsearch', requestId, turn, objStart }));
+
+      // If extraction returned array (tool calls), skip it and find the recipe object
+      if (Array.isArray(recipe)) {
+        const responseStr = String(rawResponse);
+        // Find the first '{' which should start the recipe object
+        const objStart = responseStr.indexOf('{');
         if (objStart !== -1) {
-          const objStr = String(rawResponse).slice(objStart);
-          recipe = extractJson(objStr);
-          console.log(JSON.stringify({ event: 'meal.extract.second', requestId, turn, secondIsObj: recipe && typeof recipe === 'object', secondKeys: recipe ? Object.keys(recipe) : null }));
+          recipe = extractJson(responseStr.slice(objStart));
+        } else {
+          recipe = null;
         }
       }
       console.log(JSON.stringify({
