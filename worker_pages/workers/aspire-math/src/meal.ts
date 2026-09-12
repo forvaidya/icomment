@@ -456,7 +456,7 @@ async function findSimilarQueries(db: any, embedding: number[], diet: Diet, limi
           return null;
         }
       })
-      .filter((m: any) => m !== null && m.similarity > 0.75)
+      .filter((m: any) => m !== null && m.similarity > 0.65)
       .sort((a: any, b: any) => b.similarity - a.similarity)
       .slice(0, limit);
 
@@ -511,6 +511,7 @@ export async function runRecipeAgent(
   // Search for similar queries (semantic cache)
   if (embedding && db && diet) {
     const similar = await findSimilarQueries(db, embedding, diet, 3);
+    console.log(JSON.stringify({ event: 'semantic.search', requestId, matchesFound: similar.length, topMatch: similar[0] }));
     if (similar.length > 0) {
       const topMatch = similar[0];
       console.log(JSON.stringify({ event: 'semantic.cache.hit', requestId, query: topMatch.query, similarity: topMatch.similarity.toFixed(2) }));

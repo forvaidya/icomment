@@ -216,6 +216,7 @@ export default {
       const requestId = crypto.randomUUID();
       const startedAt = Date.now();
       console.error(`MEAL START: ${requestId}`);
+      console.log(JSON.stringify({ event: 'meal.auth', requestId, userEmail, userId: userEmail || 'anonymous' }));
 
       // Extract userId from CF Access email (forwarded by Pages Function)
       let userId = userEmail || 'anonymous';
