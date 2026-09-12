@@ -335,6 +335,7 @@ export async function runRecipeAgent(
       const rawResponse = out?.response;
       // Handle multiple formats: direct object, string with array+object, etc.
       let recipe = extractJson(rawResponse);
+      console.error(JSON.stringify({ event: 'meal.first.extract', requestId, turn, isArray: Array.isArray(recipe), isNull: recipe === null, type: typeof recipe }));
 
       // If extraction returned array (tool calls), skip it and find the recipe object
       if (Array.isArray(recipe)) {
