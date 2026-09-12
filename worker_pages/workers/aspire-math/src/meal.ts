@@ -109,6 +109,26 @@ const MEAT_KEYWORDS = [
   'seafood', 'meat', 'steak', 'bacon', 'ham', 'sausage'
 ];
 
+// Query filter: remove noise that doesn't affect recipe
+// KEEP: all festivals (provide context) and religious preferences
+// REMOVE: deities (Ganesh, Lakshmi), social occasions, relations/people
+const NOISE_PATTERNS = [
+  // Deities
+  /\b(ganesh|lakshmi|krishna|shiva|brahma|durga|saraswati|hanuman|ganesha)\b/gi,
+  // Social occasions (birthday, anniversary, wedding, etc.)
+  /\b(birthday|anniversary|wedding|engagement|baby shower|graduation|reunion)\b/gi,
+  // Relations/people (not their diets, just social context)
+  /\b(grandma|grandpa|grandmother|grandfather|mom|mother|dad|father|wife|husband|girlfriend|boyfriend|son|daughter|sister|brother|uncle|aunt|cousin|friend|spouse|fiancee|fiancé|baby|kid|child)\b/gi,
+];
+
+function filterQuery(query: string): string {
+  let filtered = query;
+  for (const pattern of NOISE_PATTERNS) {
+    filtered = filtered.replace(pattern, '');
+  }
+  return filtered.replace(/\s+/g, ' ').trim();
+}
+
 // Religious/cultural exclusions
 const RELIGION_EXCLUSIONS: Record<string, string[]> = {
   hindu: ['beef'],
@@ -404,27 +424,31 @@ export async function runRecipeAgent(
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
   const religion = body.religion || null;
 
-  // Log search to D1 if userId available
-  if (userId && db) {
-    await logSearchToDb(db, userId, String(body.query ?? 'recipe'), diet, allergies);
-  }
+  // Filter query: remove deities, occasions, relations (noise that doesn't affect recipe)
+  // KEEP: religious festivals (Ramadan, Eid, Diwali affect diet preferences)
+  const filteredQuery = filterQuery(String(body.query ?? ''));
 
   // Check for diet conflicts (e.g., "chicken" query with "veg" diet) - PRIORITY
-  const dietConflict = detectDietConflict(String(body.query ?? ''), diet);
+  const dietConflict = detectDietConflict(filteredQuery, diet);
   if (dietConflict) {
     console.log(JSON.stringify({ event: 'meal.diet.conflict.rejected', requestId, query: body.query, diet, conflict: dietConflict }));
     return null; // Reject inconsistent input
   }
 
   // Check for religious conflicts (e.g., "pork" query for Muslim)
-  const religionConflict = detectReligionConflict(String(body.query ?? ''), religion);
+  const religionConflict = detectReligionConflict(filteredQuery, religion);
   if (religionConflict) {
     console.log(JSON.stringify({ event: 'meal.religion.conflict.rejected', requestId, query: body.query, religion, conflict: religionConflict }));
     return null; // Reject inconsistent input
   }
 
+  // Log search to D1 if userId available
+  if (userId && db) {
+    await logSearchToDb(db, userId, filteredQuery, diet, allergies);
+  }
+
   // ponytail: cache key is JSON hash. No secure crypto needed, just deterministic collision avoidance.
-  const key = `recipe:${btoa(JSON.stringify({ q: body.query, d: diet, a: allergies.sort() })).replace(/[+/=]/g, '')}`.slice(0, 512);
+  const key = `recipe:${btoa(JSON.stringify({ q: filteredQuery, d: diet, a: allergies.sort() })).replace(/[+/=]/g, '')}`.slice(0, 512);
   if (kv) {
     const cached = await kv.get(key);
     if (cached) {
@@ -443,7 +467,7 @@ export async function runRecipeAgent(
   }
   const messages: any[] = [
     { role: 'system', content: systemPrompt(diet, allergies, feedback) },
-    { role: 'user', content: String(body.query ?? '') },
+    { role: 'user', content: filteredQuery },
   ];
 
   console.log(JSON.stringify({ event: 'meal.start', requestId, diet, allergiesCount: allergies.length, queryLength: String(body.query).length }));
