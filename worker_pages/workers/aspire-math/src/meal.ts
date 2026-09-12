@@ -187,7 +187,8 @@ export function extractJson(text: unknown): any | null {
     const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
     if (start === -1) return null;
 
-    const end = trimmed.startsWith('[', start) ? trimmed.lastIndexOf(']') : trimmed.lastIndexOf('}');
+    // Find first closing bracket, not last — multiple JSON objects may exist
+    const end = trimmed.startsWith('[', start) ? trimmed.indexOf(']', start) : trimmed.indexOf('}', start);
     if (end <= start) {
       if (typeof text === 'string') console.error('extractJson: end <= start', { textLen: text.length, start, end });
       return null;
@@ -277,7 +278,7 @@ export async function runRecipeAgent(
   feedback?: string,
   logLevel?: string,
 ) {
-  console.error('super-modak-testing: version-4 loaded');
+  console.error('super-modak-testing: version-5 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
 
