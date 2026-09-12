@@ -313,22 +313,9 @@
     </div>
 
     <script>
-        // Get user from API (CF Access header)
-        async function getUserFromAPI() {
-            try {
-                const response = await fetch('/api/me');
-                const data = await response.json();
-                return data.userEmail || null;
-            } catch (e) {
-                console.log('Could not fetch user from API:', e);
-                return null;
-            }
-        }
-
-        async function showWelcome() {
-            const userEmail = await getUserFromAPI();
-            // Show user email if logged in, otherwise "Guest"
-            document.getElementById('userEmail').textContent = userEmail || 'Guest';
+        function showWelcome() {
+            // Auth is backend-only (CF Access), show "Guest" on frontend
+            document.getElementById('userEmail').textContent = 'Guest';
 
             // Load search count from localStorage
             try {
