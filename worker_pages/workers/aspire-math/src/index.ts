@@ -69,9 +69,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // Log CF Access email at entry point
-    const cfEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-    console.log(JSON.stringify({ event: 'worker_entry', path: url.pathname, cfEmail, hasHeader: !!cfEmail }));
+    // Extract user email from CF Access header (forwarded by Pages Function)
+    const userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
 
     if (url.pathname === '/api/deployment-info') {
       return Response.json({
@@ -81,31 +80,10 @@ export default {
     }
 
     if (url.pathname === '/api/recent-searches') {
-      // Extract userId from CF Access headers (Pages auth) or Bearer token
-      let userId: string | null = null;
-      let userEmail: string | null = null;
+      // Extract userId from CF Access email (forwarded by Pages Function)
+      const userId = userEmail || 'anonymous';
 
-      // Try CF Access header first (Cloudflare Access/Pages Auth)
-      userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-      if (userEmail) {
-        userId = userEmail;
-      }
-
-      // Fallback: Authorization header
-      if (!userId) {
-        const authHeader = request.headers.get('Authorization') || '';
-        const match = authHeader.match(/Bearer\s+(\S+)/);
-        if (match && match[1]) {
-          try {
-            const jwtPayload = JSON.parse(atob(match[1].split('.')[1]));
-            userId = jwtPayload.sub || jwtPayload.userId || null;
-          } catch (e) {
-            // ignore
-          }
-        }
-      }
-
-      if (!userId || !env.DB) {
+      if (!env.DB) {
         return Response.json({ recent: [], userEmail }, { status: 200 });
       }
 
@@ -224,12 +202,8 @@ export default {
     }
 
     if (url.pathname === '/api/me') {
-      // Extract CF Access email header (set by Pages auth)
-      const userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+      // Return current user from CF Access email
       const userId = userEmail || 'anonymous';
-
-      console.log(JSON.stringify({ event: 'api_me', userEmail, userId, headerReceived: !!userEmail }));
-
       return Response.json({ userEmail: userEmail || null, userId }, { status: 200 });
     }
 
@@ -243,30 +217,8 @@ export default {
       const startedAt = Date.now();
       console.error(`MEAL START: ${requestId}`);
 
-      // Extract userId from CF Access headers (Pages auth) or Bearer token
-      let userId: string | null = null;
-      let userEmail: string | null = null;
-
-      // Try CF Access header first (Cloudflare Access/Pages Auth)
-      userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-      console.log(JSON.stringify({ event: 'meal_headers', cfEmail: userEmail, hasHeader: !!userEmail }));
-      if (userEmail) {
-        userId = userEmail;
-      }
-
-      // Fallback: Authorization header
-      if (!userId) {
-        const authHeader = request.headers.get('Authorization') || '';
-        const match = authHeader.match(/Bearer\s+(\S+)/);
-        if (match && match[1]) {
-          try {
-            const jwtPayload = JSON.parse(atob(match[1].split('.')[1]));
-            userId = jwtPayload.sub || jwtPayload.userId || null;
-          } catch (e) {
-            console.log(JSON.stringify({ event: 'jwt.parse.error', error: String(e) }));
-          }
-        }
-      }
+      // Extract userId from CF Access email (forwarded by Pages Function)
+      let userId = userEmail || 'anonymous';
 
       try {
         const body = await request.json() as { query: string; diet: unknown; allergies: unknown; sessionId?: string; feedback?: string; logLevel?: string };
