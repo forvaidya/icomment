@@ -52,6 +52,29 @@ const MODEL_CHAIN = [
 
 let cachedModel: string | null = null;
 
+// Embedding model for semantic search
+const EMBEDDING_MODEL = '@cf/baai/bge-base-en-v1.5';
+
+// Generate embedding for query using Workers AI
+async function generateEmbedding(ai: Ai, query: string): Promise<number[] | null> {
+  try {
+    const result = await ai.run(EMBEDDING_MODEL, { text: query });
+    return result?.data?.[0] || null;
+  } catch (e) {
+    console.log(JSON.stringify({ event: 'embedding.error', error: String(e) }));
+    return null;
+  }
+}
+
+// Cosine similarity between two vectors
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  const dotProduct = a.reduce((sum, x, i) => sum + x * b[i], 0);
+  const normA = Math.sqrt(a.reduce((sum, x) => sum + x * x, 0));
+  const normB = Math.sqrt(b.reduce((sum, x) => sum + x * x, 0));
+  return normA && normB ? dotProduct / (normA * normB) : 0;
+}
+
 // ponytail: lazy init, try models until one works. Cache the winner.
 async function selectModel(ai: Ai): Promise<string> {
   if (cachedModel) return cachedModel;
@@ -395,16 +418,52 @@ async function webSearchRecipe(query: string, diet: Diet | null): Promise<any | 
   }
 }
 
-async function logSearchToDb(db: any, userId: string, query: string, diet: Diet, allergies: string[], recipeTitle?: string, liked?: boolean) {
+async function logSearchToDb(db: any, userId: string, query: string, diet: Diet, allergies: string[], recipeTitle?: string, liked?: boolean, embedding?: number[] | null) {
   try {
     if (!db) return;
     const allergiesJson = JSON.stringify(allergies);
+    const embeddingJson = embedding ? JSON.stringify(embedding) : null;
     await db.prepare(`
-      INSERT INTO search_history (userId, query, diet, allergies, recipeTitle, liked, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).bind(userId, query, diet, allergiesJson, recipeTitle || null, liked ? 1 : 0, Date.now()).run();
+      INSERT INTO search_history (userId, query, diet, allergies, recipeTitle, liked, timestamp, embedding)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(userId, query, diet, allergiesJson, recipeTitle || null, liked ? 1 : 0, Date.now(), embeddingJson).run();
   } catch (e) {
     console.log(JSON.stringify({ event: 'db.log.error', error: String(e) }));
+  }
+}
+
+// Find similar queries in D1 using vector similarity
+async function findSimilarQueries(db: any, embedding: number[], diet: Diet, limit: number = 5): Promise<Array<{query: string; recipeTitle?: string; similarity: number}>> {
+  try {
+    if (!db) return [];
+    // Fetch recent queries with embeddings (ponytail: no vector index, so fetch and compute locally)
+    const result = await db.prepare(`
+      SELECT DISTINCT query, recipeTitle, embedding
+      FROM search_history
+      WHERE embedding IS NOT NULL AND diet = ? AND recipeTitle IS NOT NULL
+      ORDER BY timestamp DESC
+      LIMIT 100
+    `).bind(diet).all();
+
+    const rows = (result as any).results || [];
+    const matches = rows
+      .map((row: any) => {
+        try {
+          const storedEmbedding = JSON.parse(row.embedding);
+          const similarity = cosineSimilarity(embedding, storedEmbedding);
+          return { query: row.query, recipeTitle: row.recipeTitle, similarity };
+        } catch (e) {
+          return null;
+        }
+      })
+      .filter((m: any) => m !== null && m.similarity > 0.75)
+      .sort((a: any, b: any) => b.similarity - a.similarity)
+      .slice(0, limit);
+
+    return matches;
+  } catch (e) {
+    console.log(JSON.stringify({ event: 'similarity_search.error', error: String(e) }));
+    return [];
   }
 }
 
@@ -442,9 +501,26 @@ export async function runRecipeAgent(
     return null; // Reject inconsistent input
   }
 
-  // Log search to D1 if userId available
+  // Generate embedding for semantic search
+  let embedding: number[] | null = null;
+  if (db) {
+    embedding = await generateEmbedding(ai, filteredQuery);
+    console.log(JSON.stringify({ event: 'embedding.generated', requestId, embeddingDim: embedding?.length || 0 }));
+  }
+
+  // Search for similar queries (semantic cache)
+  if (embedding && db && diet) {
+    const similar = await findSimilarQueries(db, embedding, diet, 3);
+    if (similar.length > 0) {
+      const topMatch = similar[0];
+      console.log(JSON.stringify({ event: 'semantic.cache.hit', requestId, query: topMatch.query, similarity: topMatch.similarity.toFixed(2) }));
+      return { recipe: { title: topMatch.recipeTitle || 'Recipe', description: 'Similar recipe from cache', ingredients: [], steps: [], tags: ['cached'] }, cached: true };
+    }
+  }
+
+  // Log search to D1 if userId available (will be updated with recipeTitle after generation)
   if (userId && db) {
-    await logSearchToDb(db, userId, filteredQuery, diet, allergies);
+    await logSearchToDb(db, userId, filteredQuery, diet, allergies, undefined, undefined, embedding);
   }
 
   // ponytail: cache key is JSON hash. No secure crypto needed, just deterministic collision avoidance.
