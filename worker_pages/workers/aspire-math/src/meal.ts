@@ -111,14 +111,14 @@ const MEAT_KEYWORDS = [
 
 // Query filter: remove noise that doesn't affect recipe
 // KEEP: all festivals (provide context) and religious preferences
-// REMOVE: deities (Ganesh, Lakshmi), social occasions, relations/people
+// REMOVE: deities, social occasions, relations/people, orphaned prepositions/articles
 const NOISE_PATTERNS = [
-  // Deities
-  /\b(ganesh|lakshmi|krishna|shiva|brahma|durga|saraswati|hanuman|ganesha)\b/gi,
+  // Deities (Ganesh, Lakshmi, Krishna, etc.)
+  /\b(ganesh|lakshmi|krishna|shiva|brahma|durga|saraswati|hanuman|ganesha|lord)\b/gi,
   // Social occasions (birthday, anniversary, wedding, etc.)
   /\b(birthday|anniversary|wedding|engagement|baby shower|graduation|reunion)\b/gi,
-  // Relations/people (not their diets, just social context)
-  /\b(grandma|grandpa|grandmother|grandfather|mom|mother|dad|father|wife|husband|girlfriend|boyfriend|son|daughter|sister|brother|uncle|aunt|cousin|friend|spouse|fiancee|fiancé|baby|kid|child)\b/gi,
+  // Relations/people (Grandma, girlfriend, friend, etc.) and possessives
+  /\b(grandma|grandpa|grandmother|grandfather|mom|mother|dad|father|wife|husband|girlfriend|boyfriend|son|daughter|sister|brother|uncle|aunt|cousin|friend|spouse|fiancee|fiancé|baby|kid|child|my|our|his|her|ma'am|sir)\b/gi,
 ];
 
 function filterQuery(query: string): string {
@@ -126,7 +126,14 @@ function filterQuery(query: string): string {
   for (const pattern of NOISE_PATTERNS) {
     filtered = filtered.replace(pattern, '');
   }
-  return filtered.replace(/\s+/g, ' ').trim();
+  // Split, remove common orphaned prepositions/articles, rejoin
+  const words = filtered
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(w => !/^(for|at|in|on|to|of|the|a|an)$/i.test(w));
+
+  return words.join(' ');
 }
 
 // Religious/cultural exclusions
