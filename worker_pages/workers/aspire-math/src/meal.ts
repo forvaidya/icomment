@@ -354,12 +354,10 @@ export async function runRecipeAgent(
         requestId,
         turn,
         extracted: !!recipe,
-        responseType: typeof rawResponse,
-        responseLength: String(rawResponse).length,
-        responsePreview: String(rawResponse).slice(0, 200),
-        hasTitle: !!recipe?.title,
+        recipeTitle: recipe?.title,
         hasIngredients: Array.isArray(recipe?.ingredients),
-        hasSteps: Array.isArray(recipe?.steps)
+        hasSteps: Array.isArray(recipe?.steps),
+        recipeKeys: recipe ? Object.keys(recipe) : null
       }));
 
       // Accept partial recipes, fill in defaults for missing fields
