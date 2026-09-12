@@ -271,7 +271,7 @@ export async function runRecipeAgent(
   feedback?: string,
   logLevel?: string,
 ) {
-  console.error('super-modak-testing: version-1 loaded');
+  console.error('super-modak-testing: version-2 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
 
