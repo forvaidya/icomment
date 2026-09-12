@@ -3,8 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="version" content="{{SHA1}}">
-  <meta name="deployed-at" content="{{DEPLOYED_AT}}">
   <title>Aspire System</title>
   <style>
     body {
@@ -206,32 +204,6 @@
 
     initCalculator('add-form', 'add');
     initCalculator('multiply-form', 'multiply');
-  </script>
-  <footer>
-    <p>🍲 icomment | Powered by Cloudflare Workers + Pages</p>
-    <p style="margin-top: 8px; font-size: 11px;">© 2026 icomment. <span id="version-info"></span></p>
-  </footer>
-  <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-      const versionMeta = document.querySelector('meta[name="version"]');
-      const versionInfo = document.getElementById('version-info');
-      if (versionInfo) {
-        let info = '';
-        if (versionMeta) info += `SHA1: ${versionMeta.content}`;
-
-        try {
-          const res = await fetch('/api/deployment-info');
-          if (res.ok) {
-            const data = await res.json();
-            if (info) info += ' | ';
-            info += `Worker: ${data.sha1}`;
-          }
-        } catch (e) {
-          console.log('Could not fetch deployment info');
-        }
-        versionInfo.textContent = info;
-      }
-    });
   </script>
 </body>
 </html>
