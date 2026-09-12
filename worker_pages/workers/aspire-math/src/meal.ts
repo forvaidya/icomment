@@ -1,6 +1,38 @@
 // Recipe agent: LLM + one tool (check_ingredient) backed by Open Food Facts.
 // Diet/allergy safety is computed in code, never trusted to the model.
 
+// Data models (TypeScript types for validation)
+export type Diet = 'veg' | 'non_veg' | 'vegan' | null;
+export type Allergy = 'nuts' | 'dairy' | 'seafood' | 'eggs' | 'gluten' | 'soy' | 'seeds';
+
+export interface RecipeRequest {
+  query: string;
+  diet?: string | string[];
+  allergies?: string[];
+  sessionId?: string;
+  feedback?: string;
+  logLevel?: 'error' | 'info' | 'debug';
+  userId?: string; // From JWT
+}
+
+export interface SearchHistory {
+  userId: string;
+  query: string;
+  diet: Diet;
+  allergies: Allergy[];
+  recipeTitle?: string;
+  liked?: boolean;
+  timestamp: number; // milliseconds
+}
+
+export interface UserPreferences {
+  userId: string;
+  preferredDiet: Diet;
+  preferredAllergies: Allergy[];
+  lastSearched: number;
+  searchCount: number;
+}
+
 export interface Ai {
   run(model: string, input: unknown): Promise<any>;
 }
