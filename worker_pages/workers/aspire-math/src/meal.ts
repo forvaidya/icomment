@@ -398,6 +398,18 @@ export async function runRecipeAgent(
           steps: Array.isArray(recipe.steps) ? recipe.steps : ['Prepare and cook'],
           tags: Array.isArray(recipe.tags) ? recipe.tags : [],
         };
+
+        // Validate all ingredients in final recipe
+        if (Array.isArray(filled.ingredients)) {
+          const ingNames = filled.ingredients.map(ing => String(ing.name || ''));
+          for (const ingName of ingNames) {
+            if (ingName) {
+              const ingCheck = await checkIngredient(ingName, diet, allergies);
+              console.log(JSON.stringify({ event: 'meal.final.ingredient.check', requestId, ingredient: ingName, safe: ingCheck.safe_for_diet !== false && ingCheck.safe_for_allergies !== false }));
+            }
+          }
+        }
+
         const result = { recipe: filled };
         if (kv) {
           await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
