@@ -379,6 +379,12 @@ export async function runRecipeAgent(
       return null;
     }
 
+    // Don't try to send back malformed tool calls. The model provided what it could.
+    if (!calls.length) {
+      console.log(JSON.stringify({ event: 'meal.no.tools', requestId, turn }));
+      continue;
+    }
+
     messages.push({ role: 'assistant', content: out.response ?? '', tool_calls: calls });
     for (const call of calls) {
       const { name, args } = toolCallOf(call);
