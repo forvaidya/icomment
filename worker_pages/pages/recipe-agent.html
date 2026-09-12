@@ -209,7 +209,7 @@
         </nav>
 
         <div class="recipe-container">
-        <div id="welcomeSection" style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196F3; display: none;">
+        <div id="welcomeSection" style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #2196F3;">
             <p style="margin: 0; font-size: 14px; color: #1565c0;">
                 Welcome, <strong id="userEmail"></strong>
                 <span id="searchCount" style="margin-left: 15px; color: #666; font-size: 12px;"></span>
@@ -329,7 +329,6 @@
             const userEmail = getUserFromJWT();
             if (userEmail) {
                 document.getElementById('userEmail').textContent = userEmail;
-                document.getElementById('welcomeSection').style.display = 'block';
 
                 // Load search count
                 fetch('/api/recent-searches')
