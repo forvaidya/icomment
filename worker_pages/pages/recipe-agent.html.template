@@ -192,43 +192,35 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">Allergies</label>
+                <label class="form-label">Allergies (broad categories)</label>
                 <div class="checkbox-grid">
                     <div class="checkbox-option">
-                        <input type="checkbox" id="peanuts" name="allergies" value="peanuts">
-                        <label for="peanuts">Peanuts</label>
-                    </div>
-                    <div class="checkbox-option">
-                        <input type="checkbox" id="tree_nuts" name="allergies" value="tree_nuts">
-                        <label for="tree_nuts">Tree Nuts</label>
+                        <input type="checkbox" id="nuts" name="allergies" value="nuts">
+                        <label for="nuts">Nuts</label>
                     </div>
                     <div class="checkbox-option">
                         <input type="checkbox" id="dairy" name="allergies" value="dairy">
                         <label for="dairy">Dairy</label>
                     </div>
                     <div class="checkbox-option">
-                        <input type="checkbox" id="shellfish" name="allergies" value="shellfish">
-                        <label for="shellfish">Shellfish</label>
+                        <input type="checkbox" id="seafood" name="allergies" value="seafood">
+                        <label for="seafood">Seafood</label>
                     </div>
                     <div class="checkbox-option">
                         <input type="checkbox" id="eggs" name="allergies" value="eggs">
                         <label for="eggs">Eggs</label>
                     </div>
                     <div class="checkbox-option">
-                        <input type="checkbox" id="wheat" name="allergies" value="wheat">
-                        <label for="wheat">Wheat/Gluten</label>
+                        <input type="checkbox" id="gluten" name="allergies" value="gluten">
+                        <label for="gluten">Gluten</label>
                     </div>
                     <div class="checkbox-option">
                         <input type="checkbox" id="soy" name="allergies" value="soy">
                         <label for="soy">Soy</label>
                     </div>
                     <div class="checkbox-option">
-                        <input type="checkbox" id="sesame" name="allergies" value="sesame">
-                        <label for="sesame">Sesame</label>
-                    </div>
-                    <div class="checkbox-option">
-                        <input type="checkbox" id="fish" name="allergies" value="fish">
-                        <label for="fish">Fish</label>
+                        <input type="checkbox" id="seeds" name="allergies" value="seeds">
+                        <label for="seeds">Seeds</label>
                     </div>
                 </div>
             </div>

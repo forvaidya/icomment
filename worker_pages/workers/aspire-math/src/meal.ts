@@ -54,17 +54,15 @@ function normalizeDiet(d: unknown): Diet {
   return 'non_veg';
 }
 
-// UI allergy value -> Open Food Facts allergen tags.
+// UI allergy value -> Open Food Facts allergen tags (broad categories)
 const ALLERGEN_TAGS: Record<string, string[]> = {
-  peanuts: ['peanuts'],
-  tree_nuts: ['nuts'],
+  nuts: ['peanuts', 'nuts'],
   dairy: ['milk'],
-  shellfish: ['crustaceans', 'molluscs'],
+  seafood: ['fish', 'crustaceans', 'molluscs'],
   eggs: ['eggs'],
-  wheat: ['gluten'],
+  gluten: ['gluten'],
   soy: ['soybeans'],
-  sesame: ['sesame-seeds'],
-  fish: ['fish'],
+  seeds: ['sesame-seeds'],
 };
 
 const TOOLS = [{
