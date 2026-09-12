@@ -313,37 +313,20 @@
     </div>
 
     <script>
-        // Extract and display user from JWT
-        function getUserFromJWT() {
+        // Get user from API (CF Access header)
+        async function getUserFromAPI() {
             try {
-                // Parse all cookies
-                const cookies = document.cookie.split(';').reduce((acc, cookie) => {
-                    const [key, value] = cookie.trim().split('=');
-                    if (key) acc[key] = decodeURIComponent(value);
-                    return acc;
-                }, {});
-
-                // Debug: log all cookies
-                console.log('Available cookies:', Object.keys(cookies));
-
-                // Try auth, jwt, Authorization, token
-                const token = cookies.auth || cookies.jwt || cookies.Authorization || cookies.token;
-                if (token) {
-                    const parts = token.split('.');
-                    if (parts.length === 3) {
-                        const payload = JSON.parse(atob(parts[1]));
-                        console.log('JWT payload:', payload);
-                        return payload.email || payload.sub || payload.userId;
-                    }
-                }
+                const response = await fetch('/api/me');
+                const data = await response.json();
+                return data.userEmail || null;
             } catch (e) {
-                console.log('JWT extraction error:', e);
+                console.log('Could not fetch user from API:', e);
+                return null;
             }
-            return null;
         }
 
-        function showWelcome() {
-            const userEmail = getUserFromJWT();
+        async function showWelcome() {
+            const userEmail = await getUserFromAPI();
             // Show user email if logged in, otherwise "Guest"
             document.getElementById('userEmail').textContent = userEmail || 'Guest';
 

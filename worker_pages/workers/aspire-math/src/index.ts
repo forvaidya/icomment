@@ -77,16 +77,17 @@ export default {
     }
 
     if (url.pathname === '/api/recent-searches') {
-      // Extract userId from cookies or Authorization header
+      // Extract userId from CF Access headers (Pages auth) or Bearer token
       let userId: string | null = null;
-      const cookieHeader = request.headers.get('Cookie') || '';
-      const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
-        const [key, value] = cookie.trim().split('=');
-        acc[key] = decodeURIComponent(value);
-        return acc;
-      }, {} as Record<string, string>);
-      userId = cookies['userId'] || null;
+      let userEmail: string | null = null;
 
+      // Try CF Access header first (Cloudflare Access/Pages Auth)
+      userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+      if (userEmail) {
+        userId = userEmail;
+      }
+
+      // Fallback: Authorization header
       if (!userId) {
         const authHeader = request.headers.get('Authorization') || '';
         const match = authHeader.match(/Bearer\s+(\S+)/);
@@ -101,7 +102,7 @@ export default {
       }
 
       if (!userId || !env.DB) {
-        return Response.json({ recent: [] }, { status: 200 });
+        return Response.json({ recent: [], userEmail }, { status: 200 });
       }
 
       try {
@@ -218,6 +219,13 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/me') {
+      // Return current user info (from CF Access headers)
+      const userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+      const userId = userEmail || 'anonymous';
+      return Response.json({ userEmail: userEmail || null, userId }, { status: 200 });
+    }
+
     if (url.pathname === '/meal') {
       console.error('MEAL HANDLER CALLED');
       if (request.method !== 'POST') {
@@ -228,16 +236,17 @@ export default {
       const startedAt = Date.now();
       console.error(`MEAL START: ${requestId}`);
 
-      // Extract userId from cookie or Authorization header
+      // Extract userId from CF Access headers (Pages auth) or Bearer token
       let userId: string | null = null;
-      const cookieHeader = request.headers.get('Cookie') || '';
-      const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
-        const [key, value] = cookie.trim().split('=');
-        acc[key] = decodeURIComponent(value);
-        return acc;
-      }, {} as Record<string, string>);
-      userId = cookies['userId'] || null;
+      let userEmail: string | null = null;
 
+      // Try CF Access header first (Cloudflare Access/Pages Auth)
+      userEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+      if (userEmail) {
+        userId = userEmail;
+      }
+
+      // Fallback: Authorization header
       if (!userId) {
         const authHeader = request.headers.get('Authorization') || '';
         const match = authHeader.match(/Bearer\s+(\S+)/);
