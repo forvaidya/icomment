@@ -323,7 +323,10 @@ export async function runRecipeAgent(
         calls = out.response;
       } else if (typeof out?.response === 'string') {
         const parsed = extractJson(out.response);
-        if (Array.isArray(parsed)) calls = parsed;
+        if (Array.isArray(parsed)) {
+          calls = parsed;
+          console.log(JSON.stringify({ event: 'meal.tool.parsed', requestId, turn, callsCount: calls.length }));
+        }
       }
     }
 
