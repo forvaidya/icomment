@@ -331,6 +331,19 @@ async function webSearchRecipe(query: string, diet: Diet | null): Promise<any | 
   }
 }
 
+async function logSearchToDb(db: any, userId: string, query: string, diet: Diet, allergies: string[], recipeTitle?: string, liked?: boolean) {
+  try {
+    if (!db) return;
+    const allergiesJson = JSON.stringify(allergies);
+    await db.prepare(`
+      INSERT INTO search_history (userId, query, diet, allergies, recipeTitle, liked, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(userId, query, diet, allergiesJson, recipeTitle || null, liked ? 1 : 0, Date.now()).run();
+  } catch (e) {
+    console.log(JSON.stringify({ event: 'db.log.error', error: String(e) }));
+  }
+}
+
 export async function runRecipeAgent(
   ai: Ai,
   body: { query?: string; diet?: unknown; allergies?: unknown },
@@ -339,6 +352,7 @@ export async function runRecipeAgent(
   sessionId?: string,
   feedback?: string,
   logLevel?: string,
+  db?: any,
 ) {
   console.error('super-modak-testing: version-5 loaded');
   const diet = normalizeDiet(body.diet);

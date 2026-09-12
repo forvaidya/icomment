@@ -7,6 +7,11 @@ account_id = "fd13bf6b366f66d013202fb0188b9840"
 [ai]
 binding = "AI"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "aspire-recipe-db"
+database_id = "aspire-recipe-db"
+
 # KV cache namespace — optional, skipped if not configured
 # To enable: create namespace with `wrangler kv:namespace create aspire-recipe-cache`
 # Then uncomment below and add the namespace id

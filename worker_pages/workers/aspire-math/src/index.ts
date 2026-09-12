@@ -4,9 +4,32 @@ interface Fetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
+interface D1Database {
+  prepare(sql: string): D1PreparedStatement;
+  exec(sql: string): Promise<D1ExecResult>;
+}
+
+interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
+  run(): Promise<D1Result>;
+  first(column?: string): Promise<unknown>;
+  all(): Promise<D1Result>;
+}
+
+interface D1Result {
+  success: boolean;
+  meta: { duration: number };
+}
+
+interface D1ExecResult {
+  success: boolean;
+  results: D1Result[];
+}
+
 interface Env {
   LAPTOP_BACKEND_MTLS: Fetcher;
   AI: Ai;
+  DB?: D1Database;
   RECIPE_CACHE?: Kv;
   DEPLOYMENT_SHA?: string;
 }
@@ -171,7 +194,7 @@ export default {
           logLevel
         }));
 
-        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel);
+        const result = await runRecipeAgent(env.AI, body, requestId, env.RECIPE_CACHE, body.sessionId, body.feedback, logLevel, env.DB);
         if (!result) {
           return Response.json({ error: 'Model did not return a usable recipe', requestId }, { status: 500 });
         }
