@@ -344,7 +344,9 @@ export async function runRecipeAgent(
         // Find the first '{' which should start the recipe object
         const objStart = responseStr.indexOf('{');
         if (objStart !== -1) {
-          recipe = extractJson(responseStr.slice(objStart));
+          const objString = responseStr.slice(objStart);
+          recipe = extractJson(objString);
+          console.log(JSON.stringify({ event: 'meal.recipe.debug', requestId, turn, objStringLen: objString.length, objStringLast100: objString.slice(-100), recipeNull: recipe === null, recipeType: typeof recipe }));
         } else {
           recipe = null;
         }
