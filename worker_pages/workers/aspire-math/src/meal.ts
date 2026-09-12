@@ -180,7 +180,7 @@ export function extractJson(text: unknown): any | null {
   const trimmed = text.trim();
   try {
     return JSON.parse(trimmed);
-  } catch {
+  } catch (parseErr) {
     // Try to find JSON in the string (object or array)
     const objStart = trimmed.indexOf('{');
     const arrStart = trimmed.indexOf('[');
@@ -190,8 +190,9 @@ export function extractJson(text: unknown): any | null {
     const end = trimmed.startsWith('[', start) ? trimmed.lastIndexOf(']') : trimmed.lastIndexOf('}');
     if (end <= start) return null;
     try {
-      return JSON.parse(trimmed.slice(start, end + 1));
-    } catch {
+      const snippet = trimmed.slice(start, end + 1);
+      return JSON.parse(snippet);
+    } catch (snippetErr) {
       return null;
     }
   }
@@ -271,7 +272,7 @@ export async function runRecipeAgent(
   feedback?: string,
   logLevel?: string,
 ) {
-  console.error('super-modak-testing: version-2 loaded');
+  console.error('super-modak-testing: version-3 loaded');
   const diet = normalizeDiet(body.diet);
   const allergies = Array.isArray(body.allergies) ? (body.allergies as string[]) : [];
 
