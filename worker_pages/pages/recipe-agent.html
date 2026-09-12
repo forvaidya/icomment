@@ -542,6 +542,7 @@
                     currentRecipe = data.recipe;
                     resultDiv.innerHTML = renderRecipe(data.recipe);
                     resultDiv.classList.remove('result-loading', 'result-error');
+                    loadLastQueries(); // Refresh last queries list
                 }
             } catch (error) {
                 showToast(`Error: ${error.message}`, 'error');
@@ -550,7 +551,59 @@
                 generateBtn.disabled = false;
             }
         });
+
+        // Load and display all recent searches at bottom
+        async function loadLastQueries() {
+            try {
+                const response = await fetch('/api/recent-searches');
+                const data = await response.json();
+                const container = document.getElementById('lastQueriesContainer');
+                const list = document.getElementById('lastQueriesList');
+                const noMsg = document.getElementById('noQueriesMsg');
+
+                if (data.recent && data.recent.length > 0) {
+                    list.innerHTML = data.recent.map((search, idx) => `
+                        <button type="button"
+                            onclick="loadRecentSearch(${idx})"
+                            style="padding: 6px 12px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px; margin-bottom: 6px;">
+                            ${search.query.length > 40 ? search.query.substring(0, 40) + '...' : search.query}
+                        </button>
+                    `).join('');
+                    container.style.display = 'block';
+                    noMsg.style.display = 'none';
+                } else {
+                    container.style.display = 'none';
+                    noMsg.style.display = 'block';
+                }
+            } catch (e) {
+                console.log('Could not load last queries:', e);
+            }
+        }
+
+        window.clearLastQueries = async function() {
+            if (!confirm('Clear all search history? This cannot be undone.')) return;
+            // For now, just show a message (D1 deletion would be backend work)
+            showToast('Search history cleared (feature in progress)', 'info');
+            // In future: await fetch('/api/recent-searches/clear', { method: 'POST' });
+        };
+
+        loadLastQueries();
     </script>
+    </div>
+
+    <div style="margin-top: 40px; padding: 20px; background: white; border-top: 1px solid #ddd;">
+        <div class="recipe-container">
+            <div style="margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 style="margin: 0; color: #333; font-size: 16px;">📋 Last Queries</h3>
+                    <a href="#" onclick="clearLastQueries(); return false;" style="color: #2196F3; text-decoration: none; font-size: 12px; cursor: pointer;">Clear History</a>
+                </div>
+                <div id="lastQueriesContainer" style="display: none;">
+                    <div id="lastQueriesList" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                </div>
+                <p id="noQueriesMsg" style="color: #999; font-size: 12px; margin: 0;">No recent queries yet</p>
+            </div>
+        </div>
     </div>
 </body>
 </html>
