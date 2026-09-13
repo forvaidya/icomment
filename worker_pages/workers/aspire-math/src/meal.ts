@@ -575,7 +575,7 @@ export async function runRecipeAgent(
     try {
       // ponytail: no response_format — tools + json_object is unreliable on this
       // model, and extractJson() is needed either way.
-      out = await ai.run(model, { messages, tools: TOOLS });
+      out = await ai.run(model, { messages, tools: TOOLS, max_tokens: 2048 });
       last = out;
 
       console.log(JSON.stringify({ event: 'meal.turn', requestId, turn, hasToolCalls: !!out?.tool_calls?.length, responseLength: String(out?.response).length, rawResponse: String(out?.response).slice(0, 300) }));
