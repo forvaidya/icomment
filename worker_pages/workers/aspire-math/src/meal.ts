@@ -113,7 +113,8 @@ async function generateRecipeChunked(
     const titleRes = await ai.run(model, {
       messages: [
         { role: 'user', content: `Generate ONLY a JSON object with "title" and "description" for: ${query}\nDiet: ${diet || 'any'}\nAllergies: ${allergies.join(', ') || 'none'}\n\nReturn ONLY valid JSON, no markdown, no extra text.` }
-      ]
+      ],
+      max_tokens: 512
     });
     const titleJson = extractJson(titleRes?.response);
     if (!titleJson?.title) throw new Error('Failed to generate title');
@@ -122,7 +123,8 @@ async function generateRecipeChunked(
     const ingredientsRes = await ai.run(model, {
       messages: [
         { role: 'user', content: `Generate ONLY a JSON array of ingredients for: ${query}\nFormat: [{"name": "ingredient", "amount": "quantity"}, ...]\nReturn ONLY valid JSON array, no markdown.` }
-      ]
+      ],
+      max_tokens: 1024
     });
     const ingredientsJson = extractJson(ingredientsRes?.response);
     if (!Array.isArray(ingredientsJson)) throw new Error('Failed to generate ingredients');
@@ -131,7 +133,8 @@ async function generateRecipeChunked(
     const stepsRes = await ai.run(model, {
       messages: [
         { role: 'user', content: `Generate ONLY a JSON array of cooking steps for: ${query}\nFormat: ["step 1", "step 2", ...]\nReturn ONLY valid JSON array, no markdown.` }
-      ]
+      ],
+      max_tokens: 1024
     });
     const stepsJson = extractJson(stepsRes?.response);
     if (!Array.isArray(stepsJson)) throw new Error('Failed to generate steps');
@@ -629,7 +632,8 @@ export async function runRecipeAgent(
     try {
       // ponytail: no response_format — tools + json_object is unreliable on this
       // model, and extractJson() is needed either way.
-      out = await ai.run(model, { messages, tools: TOOLS });
+      // max_tokens defaults to 256 on Cloudflare AI — must set explicitly.
+      out = await ai.run(model, { messages, tools: TOOLS, max_tokens: 2048 });
       last = out;
 
       console.log(JSON.stringify({ event: 'meal.turn', requestId, turn, hasToolCalls: !!out?.tool_calls?.length, responseLength: String(out?.response).length, rawResponse: String(out?.response).slice(0, 300) }));
