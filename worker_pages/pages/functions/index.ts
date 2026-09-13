@@ -147,6 +147,7 @@ export const onRequest = async ({ request }) => {
 </head>
 <body>
   <main>
+    <div style="font-size: 3rem; margin-bottom: 1rem;">🐵</div>
     <h1>Welcome to Aspire System</h1>
     <div class="welcome">
       Logged in as <span id="aspire-user-email-display" class="user-email-aspire-main">${email}</span>
