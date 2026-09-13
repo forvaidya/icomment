@@ -345,7 +345,290 @@ export const onRequest = async ({ request }) => {
         <p>Recipe Agent v1.0 — Powered by AI</p>
     </footer>
 
-    <script src="/recipe-agent.js"><\/script>
+    <script>
+        function showWelcome() {
+            try {
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                if (searches.length > 0) {
+                    document.getElementById('searchCount').textContent = \`(\${searches.length} searches)\`;
+                }
+            } catch (e) {
+                // Silently fail
+            }
+        }
+
+        function updateUserEmail(email) {
+            if (email) {
+                document.getElementById('userEmail').textContent = email;
+            }
+        }
+
+        function showToast(message, type = 'error') {
+            const toast = document.createElement('div');
+            toast.className = \`toast \${type}\`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-in forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        const logLevelSelect = document.getElementById('logLevel');
+        const logLevelKey = 'recipeLogLevel';
+
+        function getLogLevel() {
+            return localStorage.getItem(logLevelKey) || 'debug';
+        }
+
+        function setLogLevel(level) {
+            localStorage.setItem(logLevelKey, level);
+        }
+
+        logLevelSelect.value = getLogLevel();
+        logLevelSelect.addEventListener('change', (e) => setLogLevel(e.target.value));
+
+        const generateBtn = document.getElementById('generateBtn');
+        const resultDiv = document.getElementById('result');
+        let currentRecipe = null;
+        let sessionId = localStorage.getItem('recipeSessionId') || crypto.randomUUID();
+        localStorage.setItem('recipeSessionId', sessionId);
+
+        function renderRecipe(recipe) {
+            if (!recipe) return '';
+            return \`
+                <div style="padding: 20px; background: #f9f9f9; border-radius: 8px;">
+                    <h3 style="margin: 0 0 10px 0; color: #333;">\${recipe.title}</h3>
+                    <p style="margin: 0 0 15px 0; color: #666; font-size: 14px;">\${recipe.description}</p>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #333; font-size: 14px;">Ingredients:</h4>
+                    <ul style="margin: 0 0 15px 20px; padding: 0; font-size: 13px;">
+                        \${recipe.ingredients.map(ing => \`<li>\${ing.name} — \${ing.amount}</li>\`).join('')}
+                    </ul>
+
+                    <h4 style="margin: 15px 0 8px 0; color: #333; font-size: 14px;">Steps:</h4>
+                    <ol style="margin: 0 0 15px 20px; padding: 0; font-size: 13px;">
+                        \${recipe.steps.map(step => \`<li>\${step}</li>\`).join('')}
+                    </ol>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                        <button onclick="handleFeedback('love')" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">👍 Love It</button>
+                        <button onclick="handleFeedback('another')" style="padding: 8px 16px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 Try Another</button>
+                        <button onclick="showSubstituteOptions()" style="padding: 8px 16px; background: #FF9800; color: white; border: none; border-radius: 4px; cursor: pointer;">🔀 Ingredient Unavailable</button>
+                    </div>
+
+                    <div id="substituteOptions" style="display: none; margin-top: 15px; padding: 15px; background: white; border-radius: 4px; border: 1px solid #ddd;">
+                        <p style="margin: 0 0 10px 0; font-weight: bold; font-size: 13px;">Which ingredient is unavailable?</p>
+                        <div id="ingredientList" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        </div>
+                    </div>
+                </div>
+            \`;
+        }
+
+        function showSubstituteOptions() {
+            const options = document.getElementById('substituteOptions');
+            options.style.display = options.style.display === 'none' ? 'block' : 'none';
+
+            if (options.style.display === 'block' && currentRecipe) {
+                const ingredientList = document.getElementById('ingredientList');
+                ingredientList.innerHTML = currentRecipe.ingredients.map(ing => \`
+                    <button onclick="handleFeedback('substitute', '\${ing.name}')" style="padding: 6px 12px; background: #fff; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                        \${ing.name}
+                    </button>
+                \`).join('');
+            }
+        }
+
+        async function handleFeedback(type, ingredient = null) {
+            const query = document.getElementById('query').value;
+            const dietRadio = document.querySelector('input[name="diet"]:checked');
+            const diet = dietRadio ? [dietRadio.value] : [];
+            const allergies = Array.from(document.querySelectorAll('input[name="allergies"]:checked'))
+                .map(cb => cb.value);
+
+            let feedback = '';
+            if (type === 'love') {
+                alert('Great! Your recipe is ready to cook. 👨‍🍳');
+                return;
+            } else if (type === 'another') {
+                feedback = 'Try a completely different recipe for the same request.';
+            } else if (type === 'substitute') {
+                feedback = \`\${ingredient} is not available. Please suggest a substitute ingredient and adjust the recipe accordingly.\`;
+            }
+
+            resultDiv.textContent = 'Regenerating...';
+            resultDiv.classList.add('result-loading');
+
+            try {
+                const response = await fetch('/api/meal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query,
+                        diet,
+                        allergies,
+                        sessionId,
+                        feedback,
+                        logLevel: getLogLevel()
+                    })
+                });
+
+                const data = await response.json();
+                updateUserEmail(data.userEmail);
+                if (!response.ok) {
+                    showToast(data.error, 'error');
+                    resultDiv.textContent = '';
+                } else {
+                    currentRecipe = data.recipe;
+                    let recipHtml = renderRecipe(data.recipe);
+                    if (data.cached) {
+                        recipHtml = \`<div style="padding: 8px 12px; background: #c8e6c9; border-left: 3px solid #4CAF50; margin-bottom: 15px; border-radius: 4px; font-size: 12px; color: #2e7d32;">
+                            ✨ Similar recipe found in cache (faster!) — semantic search matched your query to a previous one
+                        </div>\` + recipHtml;
+                        showToast('Found similar recipe from cache! ⚡', 'success');
+                    }
+                    resultDiv.innerHTML = recipHtml;
+                    resultDiv.classList.remove('result-loading', 'result-error');
+                }
+            } catch (error) {
+                showToast(\`Error: \${error.message}\`, 'error');
+                resultDiv.textContent = '';
+            }
+        }
+
+        const RECENT_SEARCHES_KEY = 'recipeRecentSearches';
+        const MAX_SEARCHES = 50;
+
+        function saveSearchToStorage(query, diet, allergies) {
+            try {
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                searches.unshift({ query, diet, allergies: allergies || [], timestamp: Date.now() });
+                const seen = new Set();
+                const unique = searches.filter(s => {
+                  const key = \`\${s.query}|\${s.diet}|\${JSON.stringify(s.allergies)}\`;
+                  if (seen.has(key)) return false;
+                  seen.add(key);
+                  return true;
+                });
+                localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(unique.slice(0, MAX_SEARCHES)));
+            } catch (e) {
+                console.log('Could not save search to storage:', e);
+            }
+        }
+
+        function loadRecentSearches() {
+            try {
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                if (searches.length > 0) {
+                    const container = document.getElementById('recentSearchesContainer');
+                    const list = document.getElementById('recentSearchesList');
+                    list.innerHTML = searches.slice(0, 5).map((search, idx) => \`
+                        <button type="button"
+                            onclick="loadRecentSearch(\${idx})"
+                            style="padding: 6px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            \${search.query}
+                        </button>
+                    \`).join('');
+                    window.recentSearches = searches;
+                    container.style.display = 'block';
+                }
+            } catch (e) {
+                console.log('Could not load recent searches:', e);
+            }
+        }
+
+        window.loadRecentSearch = function(idx) {
+            const search = window.recentSearches?.[idx];
+            if (!search) return;
+            document.getElementById('query').value = search.query;
+            if (search.diet) {
+                document.querySelector('input[name="diet"][value="' + search.diet + '"]')?.click();
+            }
+            (search.allergies || []).forEach(allergy => {
+                document.querySelector('input[name="allergies"][value="' + allergy + '"]')?.click();
+            });
+        };
+
+        showWelcome();
+        loadRecentSearches();
+
+        generateBtn.addEventListener('click', async () => {
+            const query = document.getElementById('query').value;
+            const dietRadio = document.querySelector('input[name="diet"]:checked');
+            const diet = dietRadio ? [dietRadio.value] : [];
+            const allergies = Array.from(document.querySelectorAll('input[name="allergies"]:checked'))
+                .map(cb => cb.value);
+
+            saveSearchToStorage(query, diet[0] || null, allergies);
+
+            resultDiv.textContent = 'Generating...';
+            resultDiv.classList.add('result-loading');
+            generateBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/meal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, diet, allergies, sessionId, logLevel: getLogLevel() })
+                });
+
+                const data = await response.json();
+                updateUserEmail(data.userEmail);
+                if (!response.ok) {
+                    showToast(data.error, 'error');
+                    resultDiv.textContent = '';
+                } else {
+                    currentRecipe = data.recipe;
+                    resultDiv.innerHTML = renderRecipe(data.recipe);
+                    resultDiv.classList.remove('result-loading', 'result-error');
+                    loadLastQueries();
+                }
+            } catch (error) {
+                showToast(\`Error: \${error.message}\`, 'error');
+                resultDiv.textContent = '';
+            } finally {
+                generateBtn.disabled = false;
+            }
+        });
+
+        function loadLastQueries() {
+            try {
+                const searches = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+                const container = document.getElementById('lastQueriesContainer');
+                const list = document.getElementById('lastQueriesList');
+                const noMsg = document.getElementById('noQueriesMsg');
+
+                if (searches.length > 0) {
+                    window.recentSearches = searches;
+                    list.innerHTML = searches.map((search, idx) => \`
+                        <button type="button"
+                            onclick="loadRecentSearch(\${idx})"
+                            style="padding: 6px 12px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px; margin-bottom: 6px;">
+                            \${search.query.length > 40 ? search.query.substring(0, 40) + '...' : search.query}
+                        </button>
+                    \`).join('');
+                    container.style.display = 'block';
+                    noMsg.style.display = 'none';
+                } else {
+                    container.style.display = 'none';
+                    noMsg.style.display = 'block';
+                }
+            } catch (e) {
+                console.log('Could not load last queries:', e);
+            }
+        }
+
+        window.clearLastQueries = function() {
+            if (!confirm('Clear all search history? This cannot be undone.')) return;
+            localStorage.removeItem(RECENT_SEARCHES_KEY);
+            loadLastQueries();
+            showToast('Search history cleared', 'info');
+        };
+
+        loadLastQueries();
+    <\/script>
 </body>
 </html>`;
 
