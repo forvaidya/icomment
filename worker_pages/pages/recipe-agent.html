@@ -326,8 +326,12 @@
         }
 
         function updateUserEmail(email) {
+            console.log('updateUserEmail called with:', email);
             if (email) {
                 document.getElementById('userEmail').textContent = email;
+                console.log('Email updated to:', email);
+            } else {
+                console.log('Email is null/undefined, not updating');
             }
         }
 
@@ -450,6 +454,8 @@
                 });
 
                 const data = await response.json();
+                console.log('Response data:', data);
+                console.log('userEmail from response:', data.userEmail);
                 updateUserEmail(data.userEmail);
                 if (!response.ok) {
                     showToast(data.error, 'error');
@@ -557,6 +563,8 @@
                 });
 
                 const data = await response.json();
+                console.log('Response data:', data);
+                console.log('userEmail from response:', data.userEmail);
                 updateUserEmail(data.userEmail);
                 if (!response.ok) {
                     showToast(data.error, 'error');
