@@ -327,10 +327,15 @@ export function extractJson(text: unknown): any | null {
 // 3. { function: "name", parameters: {...} } (direct format)
 // 4. { function: { name, parameters } } (nested with parameters key)
 // 5. [function_name, parameters] (array shorthand)
+// 6. { function: { name: "...", parameters: {...} } } (model nested object format)
 function toolCallOf(call: any): { name: string; args: any } {
   // Format 5: array shorthand [function_name, params]
   if (Array.isArray(call) && call.length === 2) {
     return { name: call[0], args: call[1] ?? {} };
+  }
+  // Format 6: model returns function as object with name property
+  if (call.function && typeof call.function === 'object' && call.function.name) {
+    return { name: call.function.name, args: call.function.parameters ?? {} };
   }
   if (call.function && typeof call.function === 'string') {
     // Format 3: direct function name + parameters
