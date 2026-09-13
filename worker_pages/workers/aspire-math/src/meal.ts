@@ -42,12 +42,12 @@ export interface Kv {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
-// Model fallback chain: try newer models first, fall back to stable ones
+// Model fallback chain: try smaller, faster models first to avoid truncation
 // Last checked: Sept 10, 2026 — see https://developers.cloudflare.com/workers-ai/models/
 const MODEL_CHAIN = [
-  '@cf/meta/llama-4-scout-17b-16e-instruct', // Newest, better quality (if available)
-  '@cf/meta/llama-3-8b-instruct',             // Stable, good balance
-  '@cf/mistral/mistral-7b-instruct',          // Fallback
+  '@cf/meta/llama-3-8b-instruct',             // Faster, more concise (avoid truncation)
+  '@cf/mistral/mistral-7b-instruct',          // Alternative lightweight
+  '@cf/meta/llama-4-scout-17b-16e-instruct', // Larger but risks truncation
 ];
 
 let cachedModel: string | null = null;
@@ -575,7 +575,7 @@ export async function runRecipeAgent(
     try {
       // ponytail: no response_format — tools + json_object is unreliable on this
       // model, and extractJson() is needed either way.
-      out = await ai.run(model, { messages, tools: TOOLS, max_tokens: 2048 });
+      out = await ai.run(model, { messages, tools: TOOLS });
       last = out;
 
       console.log(JSON.stringify({ event: 'meal.turn', requestId, turn, hasToolCalls: !!out?.tool_calls?.length, responseLength: String(out?.response).length, rawResponse: String(out?.response).slice(0, 300) }));
