@@ -97,6 +97,60 @@ async function selectModel(ai: Ai): Promise<string> {
 const MAX_TURNS = 5;
 const CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
 
+// ponytail: chunked generation fallback for long responses
+async function generateRecipeChunked(
+  ai: Ai,
+  model: string,
+  query: string,
+  diet: Diet,
+  allergies: string[],
+  requestId: string,
+): Promise<any | null> {
+  try {
+    console.log(JSON.stringify({ event: 'meal.chunked.start', requestId, query }));
+
+    // Chunk 1: Title + Description
+    const titleRes = await ai.run(model, {
+      messages: [
+        { role: 'user', content: `Generate ONLY a JSON object with "title" and "description" for: ${query}\nDiet: ${diet || 'any'}\nAllergies: ${allergies.join(', ') || 'none'}\n\nReturn ONLY valid JSON, no markdown, no extra text.` }
+      ]
+    });
+    const titleJson = extractJson(titleRes?.response);
+    if (!titleJson?.title) throw new Error('Failed to generate title');
+
+    // Chunk 2: Ingredients array
+    const ingredientsRes = await ai.run(model, {
+      messages: [
+        { role: 'user', content: `Generate ONLY a JSON array of ingredients for: ${query}\nFormat: [{"name": "ingredient", "amount": "quantity"}, ...]\nReturn ONLY valid JSON array, no markdown.` }
+      ]
+    });
+    const ingredientsJson = extractJson(ingredientsRes?.response);
+    if (!Array.isArray(ingredientsJson)) throw new Error('Failed to generate ingredients');
+
+    // Chunk 3: Steps array
+    const stepsRes = await ai.run(model, {
+      messages: [
+        { role: 'user', content: `Generate ONLY a JSON array of cooking steps for: ${query}\nFormat: ["step 1", "step 2", ...]\nReturn ONLY valid JSON array, no markdown.` }
+      ]
+    });
+    const stepsJson = extractJson(stepsRes?.response);
+    if (!Array.isArray(stepsJson)) throw new Error('Failed to generate steps');
+
+    const recipe = {
+      title: titleJson.title,
+      description: titleJson.description || '',
+      ingredients: ingredientsJson,
+      steps: stepsJson
+    };
+
+    console.log(JSON.stringify({ event: 'meal.chunked.complete', requestId, title: recipe.title, ingredientCount: recipe.ingredients.length, stepCount: recipe.steps.length }));
+    return recipe;
+  } catch (e) {
+    console.log(JSON.stringify({ event: 'meal.chunked.error', requestId, error: String(e) }));
+    return null;
+  }
+}
+
 type Diet = 'veg' | 'non_veg' | 'vegan' | null;
 
 // UI sends diet as a checkbox array, the spec says a single string.
@@ -693,6 +747,20 @@ export async function runRecipeAgent(
   console.log(JSON.stringify({ event: 'meal.cap.reached', requestId, feedback: !!feedback, rawResponse: String(last?.response).slice(0, 500), extracted: !!recipe }));
 
   if (!recipe) {
+    // Try chunked generation (3 separate calls for title, ingredients, steps)
+    console.log(JSON.stringify({ event: 'meal.fallback.chunked.start', requestId }));
+    recipe = await generateRecipeChunked(ai, model, filteredQuery, diet, allergies, requestId);
+
+    if (recipe) {
+      console.log(JSON.stringify({ event: 'meal.fallback.chunked.success', requestId, title: recipe.title }));
+      const result = { recipe, chunked: true };
+      if (kv) {
+        await kv.put(key, JSON.stringify(result), { expirationTtl: CACHE_TTL });
+        console.log(JSON.stringify({ event: 'meal.cache.store.chunked', requestId, key }));
+      }
+      return result;
+    }
+
     // Fall back to web search
     const webRecipe = await webSearchRecipe(String(body.query ?? 'recipe'), diet);
     if (webRecipe) {
