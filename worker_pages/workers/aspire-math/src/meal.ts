@@ -43,11 +43,10 @@ export interface Kv {
 }
 
 // Model fallback chain: prefer quality (larger models), chunked generation handles truncation
-// Last checked: Sept 10, 2026 — see https://developers.cloudflare.com/workers-ai/models/
+// Last checked: Sept 13, 2026 — see https://developers.cloudflare.com/workers-ai/models/
 const MODEL_CHAIN = [
-  '@cf/meta/llama-4-scout-17b-16e-instruct', // Best quality, may truncate → fallback to chunked
-  '@cf/meta/llama-3-8b-instruct',             // Fast fallback
-  '@cf/mistral/mistral-7b-instruct',          // Lightweight fallback
+  '@cf/meta/llama-4-scout-17b-16e-instruct', // Best quality, max_tokens: 2048
+  '@cf/meta/llama-3-8b-instruct',             // Fast fallback, available and stable
 ];
 
 let cachedModel: string | null = null;
