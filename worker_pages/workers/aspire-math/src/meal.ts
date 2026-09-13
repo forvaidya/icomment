@@ -42,12 +42,12 @@ export interface Kv {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
-// Model fallback chain: try smaller, faster models first to avoid truncation
+// Model fallback chain: prefer quality (larger models), chunked generation handles truncation
 // Last checked: Sept 10, 2026 — see https://developers.cloudflare.com/workers-ai/models/
 const MODEL_CHAIN = [
-  '@cf/meta/llama-3-8b-instruct',             // Faster, more concise (avoid truncation)
-  '@cf/mistral/mistral-7b-instruct',          // Alternative lightweight
-  '@cf/meta/llama-4-scout-17b-16e-instruct', // Larger but risks truncation
+  '@cf/meta/llama-4-scout-17b-16e-instruct', // Best quality, may truncate → fallback to chunked
+  '@cf/meta/llama-3-8b-instruct',             // Fast fallback
+  '@cf/mistral/mistral-7b-instruct',          // Lightweight fallback
 ];
 
 let cachedModel: string | null = null;
