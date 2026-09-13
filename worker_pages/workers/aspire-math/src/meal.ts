@@ -359,8 +359,15 @@ function normalizeToolCalls(calls: any[]): any[] {
     } else {
       // Handle object formats
       const fn = call.function ?? call;
-      name = fn.name || (Array.isArray(call) ? call[0] : '');
-      params = fn.parameters ?? fn.arguments ?? {};
+      // If fn is a string, it's the function name directly
+      if (typeof fn === 'string') {
+        name = fn;
+        params = call.parameters ?? call.arguments ?? {};
+      } else {
+        // fn is an object with name property
+        name = fn.name || (Array.isArray(call) ? call[0] : '');
+        params = fn.parameters ?? fn.arguments ?? {};
+      }
     }
 
     return {
