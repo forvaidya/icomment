@@ -746,7 +746,7 @@ export async function runRecipeAgent(
   }
 
   // Turn cap hit — hand back whatever the model last produced.
-  const recipe = extractJson(last?.response);
+  let recipe = extractJson(last?.response);
   console.log(JSON.stringify({ event: 'meal.cap.reached', requestId, feedback: !!feedback, rawResponse: String(last?.response).slice(0, 500), extracted: !!recipe }));
 
   if (!recipe) {
