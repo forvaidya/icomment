@@ -25,7 +25,7 @@ export const onRequest = async ({ request }) => {
     <div class="header">
       <h1>🍲 Aspire</h1>
       <div class="welcome">
-        Welcome, <span class="user-email">${email}</span>
+        Welcome, <span id="aspire-user-email-display" class="user-email-aspire-main">${email}</span>
       </div>
     </div>
 
