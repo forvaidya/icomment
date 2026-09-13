@@ -304,10 +304,24 @@ export function extractJson(text: unknown): any | null {
     const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
     if (start === -1) return null;
 
-    // Find first closing bracket, not last — multiple JSON objects may exist
-    const end = trimmed.startsWith('[', start) ? trimmed.indexOf(']', start) : trimmed.indexOf('}', start);
+    // Find matching closing bracket by counting depth
+    const isArray = trimmed[start] === '[';
+    const closeChar = isArray ? ']' : '}';
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < trimmed.length; i++) {
+      const char = trimmed[i];
+      if (char === (isArray ? '[' : '{')) depth++;
+      if (char === closeChar) {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
     if (end <= start) {
-      if (typeof text === 'string') console.error('extractJson: end <= start', { textLen: text.length, start, end });
+      if (typeof text === 'string') console.error('extractJson: no matching bracket', { textLen: text.length, start, isArray });
       return null;
     }
     try {
