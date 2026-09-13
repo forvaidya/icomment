@@ -79,6 +79,10 @@ export default {
       }, { headers: { 'Content-Type': 'application/json' } });
     }
 
+    if (url.pathname === '/api/user') {
+      return Response.json({ email: userEmail || null });
+    }
+
     if (url.pathname === '/api/recent-searches') {
       // Extract userId from CF Access email (forwarded by Pages Function)
       const userId = userEmail || 'anonymous';
